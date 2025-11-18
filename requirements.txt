@@ -1,0 +1,17 @@
+# Agiloft MCP Server Requirements
+
+# MCP Framework
+mcp>=1.0.0
+
+# HTTP Client
+aiohttp>=3.9.0
+
+# Async support
+asyncio-mqtt>=0.16.0  # Optional, for future webhook support
+
+# Development dependencies (optional)
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.10.0
+black>=23.0.0
+flake8>=6.0.0

@@ -1,0 +1,1 @@
+# Agiloft MCP Server package

@@ -1,0 +1,26 @@
+{
+  "_comments": {
+    "agiloft.base_url": "Base URL for your Agiloft instance",
+    "agiloft.username": "Username for Agiloft login", 
+    "agiloft.password": "Password for Agiloft login (consider using environment variable AGILOFT_PASSWORD)",
+    "agiloft.kb": "Knowledge Base name",
+    "agiloft.language": "Language code (en, es, fr, etc.)",
+    "server.port": "Port for MCP server (not used in stdio mode)",
+    "server.log_level": "Logging level (DEBUG, INFO, WARNING, ERROR)",
+    "server.timeout": "HTTP request timeout in seconds", 
+    "server.max_retries": "Maximum number of API request retries"
+  },
+  "agiloft": {
+    "base_url": "https://agiloft160371.saas.agiloft.com/ewws/alrest/Agiloft Demo70",
+    "username": "admin",
+    "password": "YOUR_PASSWORD_HERE",
+    "kb": "Agiloft Demo70", 
+    "language": "en"
+  },
+  "server": {
+    "port": 8000,
+    "log_level": "INFO",
+    "timeout": 30,
+    "max_retries": 3
+  }
+}
