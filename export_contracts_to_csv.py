@@ -73,8 +73,7 @@ async def export_contracts_to_csv(output_file: str = None):
                     "id", "record_type", "contract_title1", "company_name",
                     "date_created", "date_submitted", "date_signed",
                     "contract_amount", "contract_end_date",
-                    "contract_term_in_months", "internal_contract_owner",
-                    "contract_description", "contract_status"
+                    "contract_term_in_months", "internal_contract_owner"
                 ]
             )
 

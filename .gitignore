@@ -51,3 +51,6 @@ htmlcov/
 
 # Logs
 *.log
+
+# Exported CSV files
+agiloft_contracts_*.csv
