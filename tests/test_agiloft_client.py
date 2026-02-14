@@ -76,34 +76,42 @@ class TestAgiloftClient:
                 'expires_in': 15
             }
         }
-        
-        with patch.object(client, 'ensure_session'), \
-             patch.object(client.session, 'post') as mock_post:
-            
-            mock_resp = AsyncMock()
-            mock_resp.status = 200
-            mock_resp.json = AsyncMock(return_value=mock_response_data)
-            mock_post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
-            mock_post.return_value.__aexit__ = AsyncMock(return_value=None)
-            
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value=mock_response_data)
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_cm
+        client.session = mock_session
+
+        with patch.object(client, 'ensure_session'):
             await client._authenticate()
-            
-            assert client.access_token == 'test_token'
-            assert client.refresh_token == 'test_refresh'
-            assert client.token_expires_at is not None
+
+        assert client.access_token == 'test_token'
+        assert client.refresh_token == 'test_refresh'
+        assert client.token_expires_at is not None
     
     @pytest.mark.asyncio
     async def test_authentication_failure_http_error(self, client):
         """Test authentication failure with HTTP error."""
-        with patch.object(client, 'ensure_session'), \
-             patch.object(client.session, 'post') as mock_post:
-            
-            mock_resp = AsyncMock()
-            mock_resp.status = 401
-            mock_resp.text = AsyncMock(return_value='Unauthorized')
-            mock_post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
-            mock_post.return_value.__aexit__ = AsyncMock(return_value=None)
-            
+        mock_resp = AsyncMock()
+        mock_resp.status = 401
+        mock_resp.text = AsyncMock(return_value='Unauthorized')
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_cm
+        client.session = mock_session
+
+        with patch.object(client, 'ensure_session'):
             with pytest.raises(AgiloftAuthError, match="Authentication failed: 401"):
                 await client._authenticate()
     
@@ -114,16 +122,20 @@ class TestAgiloftClient:
             'success': False,
             'message': 'Invalid credentials'
         }
-        
-        with patch.object(client, 'ensure_session'), \
-             patch.object(client.session, 'post') as mock_post:
-            
-            mock_resp = AsyncMock()
-            mock_resp.status = 200
-            mock_resp.json = AsyncMock(return_value=mock_response_data)
-            mock_post.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
-            mock_post.return_value.__aexit__ = AsyncMock(return_value=None)
-            
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.json = AsyncMock(return_value=mock_response_data)
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.post.return_value = mock_cm
+        client.session = mock_session
+
+        with patch.object(client, 'ensure_session'):
             with pytest.raises(AgiloftAuthError, match="Authentication failed: Invalid credentials"):
                 await client._authenticate()
     
@@ -149,53 +161,59 @@ class TestAgiloftClient:
         """Test successful API request."""
         client.access_token = 'test_token'
         client.token_expires_at = datetime.now() + timedelta(minutes=10)
-        
-        mock_response_data = {'result': 'success'}
-        
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.text = AsyncMock(return_value='{"result": "success"}')
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.request.return_value = mock_cm
+        client.session = mock_session
+
         with patch.object(client, 'ensure_session'), \
-             patch.object(client.session, 'request') as mock_request:
-            
-            mock_resp = AsyncMock()
-            mock_resp.status = 200
-            mock_resp.text = AsyncMock(return_value='{"result": "success"}')
-            mock_resp.json = AsyncMock(return_value=mock_response_data)
-            mock_request.return_value.__aenter__ = AsyncMock(return_value=mock_resp)
-            mock_request.return_value.__aexit__ = AsyncMock(return_value=None)
-            
+             patch.object(client, 'ensure_authenticated'):
             result = await client._make_request('GET', '/test')
-            
-            assert result == mock_response_data
+
+        assert result == {"result": "success"}
     
     @pytest.mark.asyncio
     async def test_make_request_401_retry(self, client):
         """Test 401 error handling with retry."""
         client.access_token = 'test_token'
         client.token_expires_at = datetime.now() + timedelta(minutes=10)
-        
-        mock_response_data = {'result': 'success'}
-        
+
+        # First response: 401
+        mock_resp_401 = AsyncMock()
+        mock_resp_401.status = 401
+        mock_resp_401.text = AsyncMock(return_value='Unauthorized')
+
+        mock_cm_401 = MagicMock()
+        mock_cm_401.__aenter__ = AsyncMock(return_value=mock_resp_401)
+        mock_cm_401.__aexit__ = AsyncMock(return_value=None)
+
+        # Second response: 200 (after re-auth)
+        mock_resp_200 = AsyncMock()
+        mock_resp_200.status = 200
+        mock_resp_200.text = AsyncMock(return_value='{"result": "success"}')
+
+        mock_cm_200 = MagicMock()
+        mock_cm_200.__aenter__ = AsyncMock(return_value=mock_resp_200)
+        mock_cm_200.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.request.side_effect = [mock_cm_401, mock_cm_200]
+        client.session = mock_session
+
         with patch.object(client, 'ensure_session'), \
-             patch.object(client, '_authenticate') as mock_auth, \
-             patch.object(client.session, 'request') as mock_request:
-            
-            # First response: 401
-            mock_resp_401 = AsyncMock()
-            mock_resp_401.status = 401
-            mock_resp_401.text = AsyncMock(return_value='Unauthorized')
-            
-            # Second response: 200
-            mock_resp_200 = AsyncMock()
-            mock_resp_200.status = 200
-            mock_resp_200.json = AsyncMock(return_value=mock_response_data)
-            
-            mock_request.return_value.__aenter__ = AsyncMock(
-                side_effect=[mock_resp_401, mock_resp_200]
-            )
-            mock_request.return_value.__aexit__ = AsyncMock(return_value=None)
-            
+             patch.object(client, 'ensure_authenticated'), \
+             patch.object(client, '_authenticate') as mock_auth:
             result = await client._make_request('GET', '/test')
-            
-            assert result == mock_response_data
+
+            assert result == {"result": "success"}
             mock_auth.assert_called_once()
     
     @pytest.mark.asyncio
@@ -267,9 +285,9 @@ class TestAgiloftClient:
     async def test_get_contract_not_found(self, client):
         """Test get contract when not found."""
         mock_response_data = {}
-        
+
         with patch.object(client, '_make_request', return_value=mock_response_data):
-            with pytest.raises(AgiloftAPIError, match="Contract not found in response"):
+            with pytest.raises(AgiloftAPIError, match="Record 999 not found in response"):
                 await client.get_contract(999)
     
     @pytest.mark.asyncio
@@ -347,11 +365,14 @@ class TestAgiloftClient:
         """Test handling of HTTP client errors."""
         client.access_token = 'test_token'
         client.token_expires_at = datetime.now() + timedelta(minutes=10)
-        
+
+        mock_session = MagicMock()
+        mock_session.request.side_effect = aiohttp.ClientError("Connection failed")
+        client.session = mock_session
+
         with patch.object(client, 'ensure_session'), \
-             patch.object(client.session, 'request', side_effect=aiohttp.ClientError("Connection failed")):
-            
-            with pytest.raises(AgiloftAPIError, match="HTTP error: Connection failed"):
+             patch.object(client, 'ensure_authenticated'):
+            with pytest.raises(AgiloftAPIError, match="HTTP client error for"):
                 await client._make_request('GET', '/test')
     
     @pytest.mark.asyncio

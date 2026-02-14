@@ -17,10 +17,11 @@ class TestConfig:
     def test_default_config(self):
         """Test default configuration values."""
         config = Config("nonexistent.json")  # File doesn't exist, should use defaults
-        
-        assert config.get('agiloft.base_url') == "https://agiloft160371.saas.agiloft.com/ewws/alrest/Agiloft Demo70"
-        assert config.get('agiloft.username') == "admin"
-        assert config.get('agiloft.kb') == "Agiloft Demo70"
+
+        # Defaults are now empty (no hardcoded production credentials)
+        assert config.get('agiloft.base_url') == ""
+        assert config.get('agiloft.username') == ""
+        assert config.get('agiloft.kb') == ""
         assert config.get('server.port') == 8000
         assert config.get('server.log_level') == "INFO"
     
@@ -46,8 +47,8 @@ class TestConfig:
             assert config.get('agiloft.base_url') == "https://test.example.com"
             assert config.get('agiloft.username') == "testuser"
             assert config.get('server.port') == 9000
-            # Should merge with defaults
-            assert config.get('agiloft.kb') == "Agiloft Demo70"
+            # Should merge with defaults (kb defaults to empty)
+            assert config.get('agiloft.kb') == ""
         finally:
             os.unlink(config_path)
     

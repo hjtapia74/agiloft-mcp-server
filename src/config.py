@@ -56,10 +56,10 @@ class Config:
         """Get default configuration values."""
         return {
             "agiloft": {
-                "base_url": "https://agiloft160371.saas.agiloft.com/ewws/alrest/Agiloft Demo70",
-                "username": "admin",
-                "password": "",  # Must be provided via config file or env var
-                "kb": "Agiloft Demo70",
+                "base_url": "",       # Must be provided via config file or env var
+                "username": "",       # Must be provided via config file or env var
+                "password": "",       # Must be provided via config file or env var
+                "kb": "",             # Must be provided via config file or env var
                 "language": "en"
             },
             "server": {
