@@ -61,7 +61,7 @@ ENTITY_REGISTRY: Dict[str, EntityConfig] = {
             "internal_contract_owner": {"type": "string", "description": "Internal contract owner"},
             "contract_type": {"type": "string", "description": "Type of contract"},
             "contract_description": {"type": "string", "description": "Contract description"},
-            "status": {"type": "string", "description": "Contract status"},
+            "wfstate": {"type": "string", "description": "Contract status (workflow state)"},
             "confidential": {"type": "string", "description": "Confidentiality level (REQUIRED)"},
             "evaluation_frequency": {"type": "integer", "description": "Evaluation frequency (REQUIRED)"},
             "auto_renewal_term_in_months": {"type": "integer", "description": "Auto-renewal term (REQUIRED)"},
@@ -73,7 +73,7 @@ ENTITY_REGISTRY: Dict[str, EntityConfig] = {
         default_search_fields=[
             "id", "record_type", "contract_title1", "company_name",
             "contract_amount", "contract_end_date", "internal_contract_owner",
-            "date_signed", "status", "contract_type"
+            "date_signed", "wfstate", "contract_type"
         ],
         required_fields=[
             "record_type", "auto_renewal_term_in_months", "confidential", "evaluation_frequency"

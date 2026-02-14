@@ -230,7 +230,14 @@ class AgiloftClient:
 
     async def search_records(self, entity_path: str, query: str = "",
                              fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Search records for any entity."""
+        """Search records for any entity.
+
+        Args:
+            entity_path: API path for the entity
+            query: Structured query using Agiloft syntax (e.g. 'wfstate=Active',
+                   'company_name~=\\'Iver\\'')
+            fields: Fields to return
+        """
         search_data = {
             "search": "",
             "field": fields or [],

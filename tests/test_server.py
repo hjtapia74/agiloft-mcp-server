@@ -193,9 +193,12 @@ class TestSearchHandler:
         assert response["entity"] == "contract"
         assert response["count"] == 1
 
-        # Verify query was sanitized and wrapped in LIKE
-        call_args = mock_agiloft_client.search_records.call_args
-        assert "LIKE '%test contracts%'" in call_args[0][1]
+        # Verify text search called once per text_search_field with ~=
+        assert mock_agiloft_client.search_records.call_count == 2  # contract has 2 text fields
+        calls = mock_agiloft_client.search_records.call_args_list
+        queries_sent = [c[0][1] for c in calls]
+        assert "contract_title1~='test contracts'" in queries_sent
+        assert "company_name~='test contracts'" in queries_sent
 
     @pytest.mark.asyncio
     async def test_search_structured_query(self, mock_agiloft_client, tool_dispatch):
