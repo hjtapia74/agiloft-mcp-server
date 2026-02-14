@@ -31,7 +31,7 @@ class TestToolDispatch:
     """Test that tool names are generated correctly and dispatch works."""
 
     def test_contract_tools_registered(self, tool_dispatch):
-        """Verify all 10 contract tools are registered."""
+        """Verify all 12 contract tools are registered."""
         expected = [
             "agiloft_search_contracts",
             "agiloft_get_contract",
@@ -43,12 +43,14 @@ class TestToolDispatch:
             "agiloft_retrieve_attachment_contract",
             "agiloft_remove_attachment_contract",
             "agiloft_get_attachment_info_contract",
+            "agiloft_action_button_contract",
+            "agiloft_evaluate_format_contract",
         ]
         for tool_name in expected:
             assert tool_name in tool_dispatch, f"Missing tool: {tool_name}"
 
     def test_company_tools_registered(self, tool_dispatch):
-        """Verify all 10 company tools are registered."""
+        """Verify all 12 company tools are registered."""
         expected = [
             "agiloft_search_companies",
             "agiloft_get_company",
@@ -60,12 +62,14 @@ class TestToolDispatch:
             "agiloft_retrieve_attachment_company",
             "agiloft_remove_attachment_company",
             "agiloft_get_attachment_info_company",
+            "agiloft_action_button_company",
+            "agiloft_evaluate_format_company",
         ]
         for tool_name in expected:
             assert tool_name in tool_dispatch, f"Missing tool: {tool_name}"
 
     def test_attachment_tools_registered(self, tool_dispatch):
-        """Verify all 10 attachment tools are registered."""
+        """Verify all 12 attachment tools are registered."""
         expected = [
             "agiloft_search_attachments",
             "agiloft_get_attachment",
@@ -77,12 +81,14 @@ class TestToolDispatch:
             "agiloft_retrieve_attachment_attachment",
             "agiloft_remove_attachment_attachment",
             "agiloft_get_attachment_info_attachment",
+            "agiloft_action_button_attachment",
+            "agiloft_evaluate_format_attachment",
         ]
         for tool_name in expected:
             assert tool_name in tool_dispatch, f"Missing tool: {tool_name}"
 
     def test_contact_tools_registered(self, tool_dispatch):
-        """Verify all 10 contact tools are registered."""
+        """Verify all 12 contact tools are registered."""
         expected = [
             "agiloft_search_contacts",
             "agiloft_get_contact",
@@ -94,12 +100,14 @@ class TestToolDispatch:
             "agiloft_retrieve_attachment_contact",
             "agiloft_remove_attachment_contact",
             "agiloft_get_attachment_info_contact",
+            "agiloft_action_button_contact",
+            "agiloft_evaluate_format_contact",
         ]
         for tool_name in expected:
             assert tool_name in tool_dispatch, f"Missing tool: {tool_name}"
 
     def test_employee_tools_registered(self, tool_dispatch):
-        """Verify all 10 employee tools are registered."""
+        """Verify all 12 employee tools are registered."""
         expected = [
             "agiloft_search_employees",
             "agiloft_get_employee",
@@ -111,12 +119,14 @@ class TestToolDispatch:
             "agiloft_retrieve_attachment_employee",
             "agiloft_remove_attachment_employee",
             "agiloft_get_attachment_info_employee",
+            "agiloft_action_button_employee",
+            "agiloft_evaluate_format_employee",
         ]
         for tool_name in expected:
             assert tool_name in tool_dispatch, f"Missing tool: {tool_name}"
 
     def test_customer_tools_registered(self, tool_dispatch):
-        """Verify all 10 customer tools are registered."""
+        """Verify all 12 customer tools are registered."""
         expected = [
             "agiloft_search_customers",
             "agiloft_get_customer",
@@ -128,6 +138,8 @@ class TestToolDispatch:
             "agiloft_retrieve_attachment_customer",
             "agiloft_remove_attachment_customer",
             "agiloft_get_attachment_info_customer",
+            "agiloft_action_button_customer",
+            "agiloft_evaluate_format_customer",
         ]
         for tool_name in expected:
             assert tool_name in tool_dispatch, f"Missing tool: {tool_name}"
@@ -154,7 +166,7 @@ class TestToolDispatch:
     def test_tool_count(self, tool_dispatch):
         """Verify total tool count matches expected."""
         tools, _ = generate_tools()
-        assert len(tools) == 60  # 10 per entity × 6 entities (contract, company, attachment, contact, employee, customer)
+        assert len(tools) == 72  # 12 per entity × 6 entities (contract, company, attachment, contact, employee, customer)
 
 
 class TestSearchHandler:
@@ -440,6 +452,90 @@ class TestUpsertHandler:
             "salesforce_contract_id~='SF-123'",
             {"contract_title1": "Upserted Contract"},
         )
+
+
+class TestActionButtonHandler:
+    """Test action button tool dispatch."""
+
+    @pytest.mark.asyncio
+    async def test_action_button_success(self, mock_agiloft_client, tool_dispatch):
+        """Test successful action button trigger."""
+        mock_agiloft_client.trigger_action_button.return_value = {
+            "success": True, "message": "Action button executed"
+        }
+
+        arguments = {"record_id": 123, "button_name": "approve"}
+
+        result = await dispatch_tool_call(
+            "agiloft_action_button_contract", arguments,
+            mock_agiloft_client, tool_dispatch
+        )
+
+        response = json.loads(result[0].text)
+        assert response["success"] is True
+        assert response["operation"] == "action_button"
+        assert response["record_id"] == 123
+        mock_agiloft_client.trigger_action_button.assert_called_once_with(
+            "/contract", 123, "approve"
+        )
+
+    @pytest.mark.asyncio
+    async def test_action_button_error(self, mock_agiloft_client, tool_dispatch):
+        """Test action button error handling."""
+        mock_agiloft_client.trigger_action_button.side_effect = Exception("Button not found")
+
+        arguments = {"record_id": 123, "button_name": "invalid_button"}
+
+        result = await dispatch_tool_call(
+            "agiloft_action_button_contract", arguments,
+            mock_agiloft_client, tool_dispatch
+        )
+
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "Button not found" in response["error"]
+
+
+class TestEvaluateFormatHandler:
+    """Test evaluate format tool dispatch."""
+
+    @pytest.mark.asyncio
+    async def test_evaluate_format_success(self, mock_agiloft_client, tool_dispatch):
+        """Test successful formula evaluation."""
+        mock_agiloft_client.evaluate_format.return_value = {
+            "success": True, "result": "Calculated Value"
+        }
+
+        arguments = {"record_id": 123, "formula": "$contract_amount * 1.1"}
+
+        result = await dispatch_tool_call(
+            "agiloft_evaluate_format_contract", arguments,
+            mock_agiloft_client, tool_dispatch
+        )
+
+        response = json.loads(result[0].text)
+        assert response["success"] is True
+        assert response["operation"] == "evaluate_format"
+        assert response["record_id"] == 123
+        mock_agiloft_client.evaluate_format.assert_called_once_with(
+            "/contract", 123, "$contract_amount * 1.1"
+        )
+
+    @pytest.mark.asyncio
+    async def test_evaluate_format_error(self, mock_agiloft_client, tool_dispatch):
+        """Test evaluate format error handling."""
+        mock_agiloft_client.evaluate_format.side_effect = Exception("Invalid formula")
+
+        arguments = {"record_id": 123, "formula": "invalid syntax"}
+
+        result = await dispatch_tool_call(
+            "agiloft_evaluate_format_contract", arguments,
+            mock_agiloft_client, tool_dispatch
+        )
+
+        response = json.loads(result[0].text)
+        assert response["success"] is False
+        assert "Invalid formula" in response["error"]
 
 
 class TestUnknownTool:

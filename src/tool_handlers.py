@@ -253,6 +253,32 @@ async def handle_attachment_info(entity: EntityConfig, arguments: Dict[str, Any]
         return _format_error("get_attachment_info", entity, str(e), record_id)
 
 
+async def handle_action_button(entity: EntityConfig, arguments: Dict[str, Any],
+                                client: AgiloftClient) -> List[TextContent]:
+    """Handle action button trigger requests."""
+    record_id = arguments.get("record_id")
+    button_name = arguments.get("button_name")
+
+    try:
+        result = await client.trigger_action_button(entity.api_path, record_id, button_name)
+        return _format_response("action_button", entity, result, record_id)
+    except Exception as e:
+        return _format_error("action_button", entity, str(e), record_id)
+
+
+async def handle_evaluate_format(entity: EntityConfig, arguments: Dict[str, Any],
+                                  client: AgiloftClient) -> List[TextContent]:
+    """Handle evaluate format requests."""
+    record_id = arguments.get("record_id")
+    formula = arguments.get("formula")
+
+    try:
+        result = await client.evaluate_format(entity.api_path, record_id, formula)
+        return _format_response("evaluate_format", entity, result, record_id)
+    except Exception as e:
+        return _format_error("evaluate_format", entity, str(e), record_id)
+
+
 # --- Dispatch ---
 
 HANDLER_DISPATCH = {
@@ -266,6 +292,8 @@ HANDLER_DISPATCH = {
     "retrieve_attachment": handle_retrieve_attachment,
     "remove_attachment": handle_remove_attachment,
     "get_attachment_info": handle_attachment_info,
+    "action_button": handle_action_button,
+    "evaluate_format": handle_evaluate_format,
 }
 
 

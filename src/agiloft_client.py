@@ -339,6 +339,24 @@ class AgiloftClient:
         )
         return response
 
+    async def trigger_action_button(self, entity_path: str, record_id: int,
+                                    button_name: str) -> Dict[str, Any]:
+        """Trigger an action button on a record."""
+        params = {"name": button_name}
+        response = await self._make_request(
+            "POST", f"{entity_path}/actionButton/{record_id}", params=params
+        )
+        return response
+
+    async def evaluate_format(self, entity_path: str, record_id: int,
+                              formula: str) -> Dict[str, Any]:
+        """Evaluate a format/formula against a record."""
+        response = await self._make_request(
+            "POST", f"{entity_path}/evaluateFormat/{record_id}",
+            json={"formula": formula}
+        )
+        return response
+
     # --- Backward-compatible Contract Wrappers ---
 
     async def search_contracts(self, query: str = "",

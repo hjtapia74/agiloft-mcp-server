@@ -379,11 +379,44 @@ class TestAgiloftClient:
     async def test_logout(self, client):
         """Test logout functionality."""
         client.access_token = 'test_token'
-        
+
         with patch.object(client, '_make_request') as mock_request:
             await client.logout()
-            
+
             mock_request.assert_called_once_with('POST', '/logout')
             assert client.access_token is None
             assert client.refresh_token is None
             assert client.token_expires_at is None
+
+    @pytest.mark.asyncio
+    async def test_trigger_action_button_success(self, client):
+        """Test successful action button trigger."""
+        mock_response_data = {
+            'success': True,
+            'message': 'Action button executed successfully'
+        }
+
+        with patch.object(client, '_make_request', return_value=mock_response_data):
+            result = await client.trigger_action_button('/contract', 123, 'approve')
+
+            assert result == mock_response_data
+            client._make_request.assert_called_once_with(
+                'POST', '/contract/actionButton/123', params={'name': 'approve'}
+            )
+
+    @pytest.mark.asyncio
+    async def test_evaluate_format_success(self, client):
+        """Test successful formula evaluation."""
+        mock_response_data = {
+            'success': True,
+            'result': 'Calculated Value: 1100'
+        }
+
+        with patch.object(client, '_make_request', return_value=mock_response_data):
+            result = await client.evaluate_format('/contract', 123, '$contract_amount * 1.1')
+
+            assert result == mock_response_data
+            client._make_request.assert_called_once_with(
+                'POST', '/contract/evaluateFormat/123',
+                json={'formula': '$contract_amount * 1.1'}
+            )

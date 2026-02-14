@@ -340,6 +340,56 @@ def _gen_attach_info_tool(entity: EntityConfig) -> Tuple[Tool, str]:
     ), "get_attachment_info"
 
 
+def _gen_action_button_tool(entity: EntityConfig) -> Tuple[Tool, str]:
+    return Tool(
+        name=_tool_name("action_button", entity),
+        description=(
+            f"Trigger an action button on a {entity.display_name.lower()} record. "
+            f"Executes the named workflow action button."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "record_id": {
+                    "type": "integer",
+                    "description": f"The ID of the {entity.display_name.lower()} record",
+                    "minimum": 1,
+                },
+                "button_name": {
+                    "type": "string",
+                    "description": "Name of the action button to trigger",
+                },
+            },
+            "required": ["record_id", "button_name"],
+        },
+    ), "action_button"
+
+
+def _gen_evaluate_format_tool(entity: EntityConfig) -> Tuple[Tool, str]:
+    return Tool(
+        name=_tool_name("evaluate_format", entity),
+        description=(
+            f"Evaluate a formula/format expression against a {entity.display_name.lower()} record. "
+            f"Returns the computed result."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "record_id": {
+                    "type": "integer",
+                    "description": f"The ID of the {entity.display_name.lower()} record",
+                    "minimum": 1,
+                },
+                "formula": {
+                    "type": "string",
+                    "description": "Agiloft formula expression to evaluate",
+                },
+            },
+            "required": ["record_id", "formula"],
+        },
+    ), "evaluate_format"
+
+
 # Generator registry
 _GENERATORS = {
     "search": _gen_search_tool,
@@ -352,6 +402,8 @@ _GENERATORS = {
     "retrieve_attachment": _gen_retrieve_attach_tool,
     "remove_attachment": _gen_remove_attach_tool,
     "get_attachment_info": _gen_attach_info_tool,
+    "action_button": _gen_action_button_tool,
+    "evaluate_format": _gen_evaluate_format_tool,
 }
 
 
@@ -372,6 +424,11 @@ def generate_tools() -> Tuple[List[Tool], ToolDispatch]:
         if entity.supports_attach:
             ops += ["attach_file", "retrieve_attachment",
                     "remove_attachment", "get_attachment_info"]
+        # P2: Action button + Evaluate format
+        if entity.supports_action_button:
+            ops.append("action_button")
+        if entity.supports_evaluate_format:
+            ops.append("evaluate_format")
 
         for op in ops:
             generator = _GENERATORS.get(op)
