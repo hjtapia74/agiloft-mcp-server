@@ -141,10 +141,15 @@ async def handle_get(entity: EntityConfig, arguments: Dict[str, Any],
         return _format_error("get", entity, str(e), record_id)
 
 
+def _strip_empty_values(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove keys with empty/None values to avoid linked field validation errors."""
+    return {k: v for k, v in data.items() if v is not None and v != ""}
+
+
 async def handle_create(entity: EntityConfig, arguments: Dict[str, Any],
                         client: AgiloftClient) -> List[TextContent]:
     """Handle create requests for any entity."""
-    data = arguments.get("data", {})
+    data = _strip_empty_values(arguments.get("data", {}))
 
     try:
         result = await client.create_record(entity.api_path, data)
@@ -157,7 +162,7 @@ async def handle_update(entity: EntityConfig, arguments: Dict[str, Any],
                         client: AgiloftClient) -> List[TextContent]:
     """Handle update requests for any entity."""
     record_id = arguments.get("record_id")
-    data = arguments.get("data", {})
+    data = _strip_empty_values(arguments.get("data", {}))
 
     try:
         result = await client.update_record(entity.api_path, record_id, data)
@@ -183,7 +188,7 @@ async def handle_upsert(entity: EntityConfig, arguments: Dict[str, Any],
                         client: AgiloftClient) -> List[TextContent]:
     """Handle upsert (insert or update) requests for any entity."""
     query = arguments.get("query", "")
-    data = arguments.get("data", {})
+    data = _strip_empty_values(arguments.get("data", {}))
 
     try:
         result = await client.upsert_record(entity.api_path, query, data)

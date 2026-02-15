@@ -59,7 +59,7 @@ ENTITY_REGISTRY: Dict[str, EntityConfig] = {
             "contract_end_date": {"type": "string", "description": "End date (YYYY-MM-DD)"},
             "contract_term_in_months": {"type": "integer", "description": "Term length in months"},
             "internal_contract_owner": {"type": "string", "description": "Internal contract owner"},
-            "contract_type": {"type": "string", "description": "Type of contract"},
+            "contract_type": {"type": "string", "description": "Type of contract (linked field - must match existing value, e.g. 'Master Services Agreement', 'Services Agreement', 'SaaS Agreement', 'Non-Disclosure Agreement')"},
             "contract_description": {"type": "string", "description": "Contract description"},
             "wfstate": {"type": "string", "description": "Contract status (workflow state)"},
             "confidential": {"type": "string", "description": "Confidentiality level (REQUIRED)"},
