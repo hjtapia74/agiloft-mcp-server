@@ -1,26 +1,29 @@
 # Agiloft MCP Server
 
-A Model Context Protocol (MCP) server for interacting with Agiloft's REST API. This server enables AI assistants to perform contract CRUD operations and search functionality through the MCP framework.
+A Model Context Protocol (MCP) server for interacting with Agiloft's REST API. This server enables AI assistants to perform CRUD operations, search, upsert, attachment management, and workflow actions across multiple Agiloft entities through a generic, table-driven architecture.
 
 ## Features
 
-- **5 MCP Tools** for contract operations:
-  - Search contracts with natural language or structured queries
-  - Retrieve specific contracts by ID
-  - Create new contracts
-  - Update existing contracts
-  - Delete contracts with configurable rules
+- **72 MCP Tools** across 6 entities with 12 operations each:
+  - **Entities**: Contract, Company, Attachment, Contact, Employee, Customer
+  - **Operations**: Search, Get, Create, Update, Delete, Upsert, Attach File, Retrieve Attachment, Remove Attachment, Get Attachment Info, Action Button, Evaluate Format
 
 - **Automatic Authentication Management**:
   - Bearer token authentication with automatic refresh
   - 15-minute token lifecycle with proactive refresh (1 minute before expiration)
   - Automatic retry on 401 errors
 
-- **Robust Architecture**:
+- **Table-Driven Architecture**:
+  - Adding a new entity requires only a single registry entry (~30 lines) — no other files change
+  - Adding a new operation applies to all entities automatically
+  - Generic client methods with backward-compatible contract wrappers
+
+- **Robust Design**:
   - Fully async/await based using `aiohttp` and `asyncio`
   - Comprehensive error handling with custom exception hierarchy
+  - Empty value stripping to prevent linked field validation errors
+  - Multi-field text search with deduplication
   - Configurable via environment variables or JSON config file
-  - Extensive logging for debugging and monitoring
 
 ## Installation
 
@@ -86,33 +89,49 @@ Configuration follows priority order: **Environment variables > config.json > de
 ### Running the MCP Server
 
 ```bash
-python src/server.py
+python run_server.py
 ```
 
 The server runs in stdio mode and communicates via standard input/output, making it compatible with MCP clients.
 
-### Testing the Agiloft Client
+### Claude Desktop Integration
 
-Test the client functionality independently:
+Add to your `claude_desktop_config.json`:
 
-```bash
-python test_script.py
+```json
+{
+  "mcpServers": {
+    "agiloft": {
+      "command": "python",
+      "args": ["/path/to/agiloft-mcp-server/run_server.py"],
+      "env": {
+        "AGILOFT_PASSWORD": "your-password"
+      }
+    }
+  }
+}
 ```
 
-This script tests:
-- Authentication
-- Contract search operations
-- CRUD operations (with confirmation prompts)
+Claude Desktop will start and manage the server automatically.
+
+### MCP Inspector (Interactive Testing)
+
+```bash
+npx @modelcontextprotocol/inspector python src/server.py
+```
+
+Opens a web UI to browse all 72 tools, view schemas, and invoke them manually.
 
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (123 tests)
 PYTHONPATH=. python -m pytest tests/ -v
 
 # Run specific test modules
-PYTHONPATH=. python -m pytest tests/test_config.py -v
-PYTHONPATH=. python -m pytest tests/test_agiloft_client.py -v
+PYTHONPATH=. python -m pytest tests/test_entity_registry.py -v
+PYTHONPATH=. python -m pytest tests/test_tool_generator.py -v
+PYTHONPATH=. python -m pytest tests/test_server.py -v
 ```
 
 ### Code Quality
@@ -125,75 +144,73 @@ black src/ test_script.py
 flake8 src/ test_script.py
 ```
 
-## Available MCP Tools
+## Supported Entities & Tools
 
-### 1. agiloft_search_contracts
+### Tool Naming Convention
 
-Search for contracts using natural language or structured queries.
+- **Singular** for single-record operations: `agiloft_get_contract`, `agiloft_create_company`
+- **Plural** for search: `agiloft_search_contracts`, `agiloft_search_companies`
+- **Pattern**: `agiloft_{operation}_{entity}`
 
-**Parameters:**
-- `query` (required): Search query - natural language text or structured syntax
-- `fields` (optional): Specific fields to return (defaults to essential fields)
-- `limit` (optional): Maximum results (default: 50)
+### Tools Per Entity (12 each)
 
-**Examples:**
+| Operation | Tool Example | Description |
+|-----------|-------------|-------------|
+| `search` | `agiloft_search_contracts` | Search with structured queries or text |
+| `get` | `agiloft_get_contract` | Retrieve a record by ID |
+| `create` | `agiloft_create_contract` | Create a new record |
+| `update` | `agiloft_update_contract` | Update an existing record |
+| `delete` | `agiloft_delete_contract` | Delete a record |
+| `upsert` | `agiloft_upsert_contract` | Insert or update based on a match query |
+| `attach_file` | `agiloft_attach_file_contract` | Upload a file attachment |
+| `retrieve_attachment` | `agiloft_retrieve_attachment_contract` | Download an attachment |
+| `remove_attachment` | `agiloft_remove_attachment_contract` | Remove an attachment |
+| `get_attachment_info` | `agiloft_get_attachment_info_contract` | Get attachment metadata |
+| `action_button` | `agiloft_action_button_contract` | Trigger a workflow action button |
+| `evaluate_format` | `agiloft_evaluate_format_contract` | Evaluate a formula against a record |
+
+### Entity Details
+
+| Entity | API Path | Key Required Fields |
+|--------|----------|-------------------|
+| Contract | `/contract` | `record_type`, `auto_renewal_term_in_months`, `confidential`, `evaluation_frequency` |
+| Company | `/company` | `company_name`, `type_of_company`, `status` |
+| Attachment | `/attachment` | `attached_file`, `title`, `status`, `expiration_date` |
+| Contact | `/contacts` | `sso_auth_method` |
+| Employee | `/contacts.employees` | `_login`, `password`, `sso_auth_method` |
+| Customer | `/contacts.customer` | `_login`, `password`, `sso_auth_method` |
+
+### Search Examples
+
 ```javascript
-// Natural language
-{"query": "contracts ending this year"}
+// Text search (uses ~= partial match across text fields)
+{"query": "Iverson"}
 
 // Structured query
-{"query": "status=Active AND contract_amount>1000000"}
+{"query": "wfstate=Active"}
+
+// With field selection and limit
+{"query": "contract_amount>50000", "fields": ["id", "contract_title1", "contract_amount"], "limit": 10}
 ```
 
-### 2. agiloft_get_contract
+### Create Example
 
-Retrieve a specific contract by ID.
+Linked fields (like `company_name`, `contract_type`) require a colon prefix:
 
-**Parameters:**
-- `contract_id` (required): The contract ID
-- `fields` (optional): Specific fields to return
-
-### 3. agiloft_create_contract
-
-Create a new contract.
-
-**Parameters:**
-- `contract_data` (required): Object with contract fields
-
-**Example:**
 ```javascript
 {
-  "contract_data": {
+  "data": {
+    "record_type": "Contract",
+    "confidential": "No",
+    "evaluation_frequency": 0,
+    "auto_renewal_term_in_months": 0,
     "contract_title1": "Software License Agreement",
-    "company_name": "Acme Corp",
-    "contract_amount": 50000,
-    "contract_start_date": "2025-01-01",
-    "contract_end_date": "2025-12-31"
+    "company_name": ":Acme Corp",
+    "contract_type": ":Services Agreement",
+    "contract_amount": "50000"
   }
 }
 ```
-
-### 4. agiloft_update_contract
-
-Update an existing contract.
-
-**Parameters:**
-- `contract_id` (required): The contract ID to update
-- `contract_data` (required): Object with fields to update
-
-### 5. agiloft_delete_contract
-
-Delete a contract.
-
-**Parameters:**
-- `contract_id` (required): The contract ID to delete
-- `delete_rule` (optional): Delete strategy (default: `UNLINK_WHERE_POSSIBLE_OTHERWISE_DELETE`)
-
-**Delete Rules:**
-- `ERROR_IF_DEPENDANTS`: Fail if dependencies exist
-- `APPLY_DELETE_WHERE_POSSIBLE`: Delete where possible
-- `DELETE_WHERE_POSSIBLE_OTHERWISE_UNLINK`: Try delete, fallback to unlink
-- `UNLINK_WHERE_POSSIBLE_OTHERWISE_DELETE`: Try unlink, fallback to delete
 
 ## Architecture
 
@@ -201,24 +218,38 @@ Delete a contract.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    MCP Client (AI)                      │
+│                    MCP Client (AI)                       │
 └─────────────────────────┬───────────────────────────────┘
                           │ stdio
 ┌─────────────────────────▼───────────────────────────────┐
-│              src/server.py (MCP Server)                 │
-│  - Tool registration and routing                        │
-│  - Request/response handling                            │
-└─────────────────────────┬───────────────────────────────┘
+│              src/server.py (MCP Server)                  │
+│  - Thin orchestrator (~50 lines)                        │
+│  - Calls generate_tools() and dispatch_tool_call()      │
+└────────────┬────────────────────────────┬───────────────┘
+             │                            │
+┌────────────▼──────────┐  ┌──────────────▼───────────────┐
+│  src/tool_generator.py │  │   src/tool_handlers.py       │
+│  - Generates 72 Tool   │  │   - Generic dispatch          │
+│    definitions from     │  │   - Per-operation handlers    │
+│    entity registry      │  │   - Query building            │
+└────────────┬──────────┘  └──────────────┬───────────────┘
+             │                            │
+┌────────────▼────────────────────────────▼───────────────┐
+│            src/entity_registry.py                        │
+│  - EntityConfig dataclass per entity                     │
+│  - Key fields, search fields, required fields            │
+│  - Operation support flags                               │
+└─────────────────────────────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────┐
-│         src/agiloft_client.py (API Client)              │
-│  - Authentication & token management                    │
-│  - HTTP request handling                                │
-│  - Automatic retry logic                                │
+│         src/agiloft_client.py (API Client)               │
+│  - Generic entity-agnostic methods                       │
+│  - Authentication & token management                     │
+│  - Backward-compatible contract wrappers                 │
 └─────────────────────────┬───────────────────────────────┘
                           │ HTTPS
 ┌─────────────────────────▼───────────────────────────────┐
-│              Agiloft REST API                           │
+│              Agiloft REST API                            │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -228,59 +259,77 @@ Delete a contract.
 agiloft-mcp-server/
 ├── src/
 │   ├── __init__.py
-│   ├── server.py              # MCP server implementation
-│   ├── agiloft_client.py      # Agiloft API client
+│   ├── server.py              # MCP server (thin orchestrator)
+│   ├── agiloft_client.py      # Generic API client
+│   ├── entity_registry.py     # Entity configs & registry
+│   ├── tool_generator.py      # MCP Tool schema generation
+│   ├── tool_handlers.py       # Generic tool dispatch & handlers
 │   ├── config.py              # Configuration manager
 │   └── exceptions.py          # Custom exceptions
 ├── tests/
-│   ├── test_server.py
-│   ├── test_agiloft_client.py
-│   ├── test_config.py
-│   └── test_exceptions.py
-├── test_script.py             # Manual testing script
-├── run_server.py              # Server launcher
+│   ├── test_server.py         # Handler & dispatch tests
+│   ├── test_agiloft_client.py # Client method tests
+│   ├── test_entity_registry.py # Registry validation tests
+│   ├── test_tool_generator.py # Tool generation tests
+│   ├── test_config.py         # Config tests
+│   └── test_exceptions.py     # Exception tests
+├── run_server.py              # Server launcher (use this)
+├── test_script.py             # Manual integration testing
 ├── requirements.txt           # Python dependencies
 ├── config.json                # Configuration (not in git)
 ├── example_config.json        # Configuration template
+├── CLAUDE.md                  # Development guidelines
 └── README.md
 ```
 
+### Adding a New Entity
+
+Add a single `EntityConfig` entry to `src/entity_registry.py`:
+
+```python
+"new_entity": EntityConfig(
+    key="new_entity",
+    key_plural="new_entities",
+    api_path="/new_entity",
+    display_name="New Entity",
+    display_name_plural="New Entities",
+    text_search_fields=["name_field"],
+    key_fields={
+        "name_field": {"type": "string", "description": "Name (REQUIRED)"},
+        # ... more fields
+    },
+    default_search_fields=["id", "name_field"],
+    required_fields=["name_field"],
+),
+```
+
+No other files need to change. The tool generator and handlers pick it up automatically.
+
+## Agiloft API Notes
+
+- **Linked fields** require a colon prefix: `:Services Agreement`, `:Iverson, Inc.`
+- **Text search** uses the `~=` operator (partial match), not `LIKE`
+- **Contract status** field is `wfstate`, not `status`
+- **Empty strings** on linked fields cause validation errors (handled automatically)
+
 ## Error Handling
 
-The server includes custom exception classes for better error handling:
+Custom exception classes for structured error handling:
 
 - `AgiloftError`: Base exception for all Agiloft-related errors
 - `AgiloftAuthError`: Authentication failures
 - `AgiloftAPIError`: API request/response errors (includes status codes and response text)
 - `AgiloftConfigError`: Configuration issues
 
-All errors are logged with comprehensive context for debugging.
-
 ## Security Considerations
 
-- **Never commit `config.json`** - it's excluded in `.gitignore`
+- **Never commit `config.json`** — it's excluded in `.gitignore`
 - Use environment variables for credentials in production
 - Tokens are automatically managed and refreshed
-- Passwords are masked in log output
-
-## Contributing
-
-Contributions are welcome! Please ensure:
-
-1. Code follows existing style (use `black` for formatting)
-2. All tests pass (`pytest tests/`)
-3. New features include tests
-4. Update documentation as needed
 
 ## License
 
 [Add your license here]
-
-## Support
-
-For issues and questions:
-- Open an issue on GitHub
-- Review the `CLAUDE.md` file for development guidelines
 
 ## Acknowledgments
 
