@@ -54,3 +54,6 @@ htmlcov/
 
 # Exported CSV files
 agiloft_contracts_*.csv
+
+# OpenAPI spec (large reference file)
+AgiloftOpenAPIJSON.json
