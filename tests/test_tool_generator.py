@@ -139,6 +139,26 @@ class TestToolGenerator:
         for name in expected:
             assert name in tool_names, f"Missing tool: {name}"
 
+    def test_expected_contract_type_tools(self):
+        """All 12 contract_type tools should be generated."""
+        tool_names = [t.name for t in self.tools]
+        expected = [
+            "agiloft_search_contract_types",
+            "agiloft_get_contract_type",
+            "agiloft_create_contract_type",
+            "agiloft_update_contract_type",
+            "agiloft_delete_contract_type",
+            "agiloft_upsert_contract_type",
+            "agiloft_attach_file_contract_type",
+            "agiloft_retrieve_attachment_contract_type",
+            "agiloft_remove_attachment_contract_type",
+            "agiloft_get_attachment_info_contract_type",
+            "agiloft_action_button_contract_type",
+            "agiloft_evaluate_format_contract_type",
+        ]
+        for name in expected:
+            assert name in tool_names, f"Missing tool: {name}"
+
     def test_dispatch_matches_tools(self):
         """Dispatch map should have an entry for every generated tool."""
         tool_names = {t.name for t in self.tools}
@@ -226,7 +246,7 @@ class TestToolGenerator:
         assert "formula" in required
 
     def test_action_button_tools_generated_for_all_entities(self):
-        """Action button tools should be generated for all 6 entities."""
+        """Action button tools should be generated for all 7 entities."""
         tool_names = [t.name for t in self.tools]
         expected = [
             "agiloft_action_button_contract",
@@ -235,12 +255,13 @@ class TestToolGenerator:
             "agiloft_action_button_contact",
             "agiloft_action_button_employee",
             "agiloft_action_button_customer",
+            "agiloft_action_button_contract_type",
         ]
         for name in expected:
             assert name in tool_names, f"Missing action button tool: {name}"
 
     def test_evaluate_format_tools_generated_for_all_entities(self):
-        """Evaluate format tools should be generated for all 6 entities."""
+        """Evaluate format tools should be generated for all 7 entities."""
         tool_names = [t.name for t in self.tools]
         expected = [
             "agiloft_evaluate_format_contract",
@@ -249,10 +270,11 @@ class TestToolGenerator:
             "agiloft_evaluate_format_contact",
             "agiloft_evaluate_format_employee",
             "agiloft_evaluate_format_customer",
+            "agiloft_evaluate_format_contract_type",
         ]
         for name in expected:
             assert name in tool_names, f"Missing evaluate format tool: {name}"
 
     def test_tool_count(self):
-        """Verify total tool count is 72 (12 per entity × 6 entities)."""
-        assert len(self.tools) == 72
+        """Verify total tool count is 84 (12 per entity × 7 entities)."""
+        assert len(self.tools) == 84

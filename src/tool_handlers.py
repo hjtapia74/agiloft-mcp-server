@@ -101,7 +101,7 @@ async def handle_search(entity: EntityConfig, arguments: Dict[str, Any],
     try:
         if _is_structured_query(query):
             # Structured query: pass through as-is
-            results = await client.search_records(entity.api_path, query, fields)
+            results = await client.search_records(entity.api_path, query, fields, limit=limit)
         elif entity.text_search_fields and query.strip():
             # Text search: query each text field with ~= and merge results
             # (Agiloft doesn't support OR across different fields with ~=)
@@ -111,7 +111,7 @@ async def handle_search(entity: EntityConfig, arguments: Dict[str, Any],
             for text_field in entity.text_search_fields:
                 field_query = f"{text_field}~='{sanitized}'"
                 field_results = await client.search_records(
-                    entity.api_path, field_query, fields
+                    entity.api_path, field_query, fields, limit=limit
                 )
                 for record in field_results:
                     rid = record.get("id")
@@ -119,7 +119,7 @@ async def handle_search(entity: EntityConfig, arguments: Dict[str, Any],
                         seen_ids.add(rid)
                         results.append(record)
         else:
-            results = await client.search_records(entity.api_path, query, fields)
+            results = await client.search_records(entity.api_path, query, fields, limit=limit)
 
         if isinstance(results, list) and len(results) > limit:
             results = results[:limit]

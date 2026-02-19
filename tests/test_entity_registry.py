@@ -215,6 +215,39 @@ class TestEntityRegistry:
             assert required in customer.key_fields, \
                 f"Required field '{required}' not in key_fields"
 
+    # --- Contract Type entity tests ---
+
+    def test_contract_type_registered(self):
+        """Contract Type entity should be in the registry."""
+        assert "contract_type" in ENTITY_REGISTRY
+
+    def test_contract_type_config_fields(self):
+        """Contract Type config should have all required fields."""
+        ct = ENTITY_REGISTRY["contract_type"]
+        assert ct.key == "contract_type"
+        assert ct.key_plural == "contract_types"
+        assert ct.api_path == "/contract_type"
+        assert ct.display_name == "Contract Type"
+        assert ct.display_name_plural == "Contract Types"
+        assert len(ct.key_fields) > 0
+        assert len(ct.default_search_fields) > 0
+        assert len(ct.required_fields) > 0
+        assert len(ct.text_search_fields) > 0
+
+    def test_contract_type_key_fields_have_type_and_description(self):
+        """Each contract type key field should have type and description."""
+        ct = ENTITY_REGISTRY["contract_type"]
+        for field_name, field_info in ct.key_fields.items():
+            assert "type" in field_info, f"Missing type for {field_name}"
+            assert "description" in field_info, f"Missing description for {field_name}"
+
+    def test_contract_type_required_fields_in_key_fields(self):
+        """Contract Type required fields should be documented in key_fields."""
+        ct = ENTITY_REGISTRY["contract_type"]
+        for required in ct.required_fields:
+            assert required in ct.key_fields, \
+                f"Required field '{required}' not in key_fields"
+
     # --- Utility function tests ---
 
     def test_get_entity_success(self):
@@ -237,4 +270,5 @@ class TestEntityRegistry:
         assert "contact" in entities
         assert "employee" in entities
         assert "customer" in entities
+        assert "contract_type" in entities
         assert isinstance(entities, list)

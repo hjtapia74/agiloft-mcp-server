@@ -153,6 +153,7 @@ class TestToolDispatch:
             "contact": ["_contacts", "_contact"],
             "employee": ["_employees", "_employee"],
             "customer": ["_customers", "_customer"],
+            "contract_type": ["_contract_types", "_contract_type"],
         }
         for tool_name, (entity_key, action) in tool_dispatch.items():
             # Verify entity_key is a valid entity
@@ -166,7 +167,7 @@ class TestToolDispatch:
     def test_tool_count(self, tool_dispatch):
         """Verify total tool count matches expected."""
         tools, _ = generate_tools()
-        assert len(tools) == 72  # 12 per entity × 6 entities (contract, company, attachment, contact, employee, customer)
+        assert len(tools) == 84  # 12 per entity × 7 entities (contract, company, attachment, contact, employee, customer, contract_type)
 
 
 class TestSearchHandler:

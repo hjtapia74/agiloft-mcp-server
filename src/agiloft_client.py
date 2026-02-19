@@ -229,7 +229,8 @@ class AgiloftClient:
     # --- Generic Entity Methods ---
 
     async def search_records(self, entity_path: str, query: str = "",
-                             fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+                             fields: Optional[List[str]] = None,
+                             limit: int = 500) -> List[Dict[str, Any]]:
         """Search records for any entity.
 
         Args:
@@ -237,13 +238,15 @@ class AgiloftClient:
             query: Structured query using Agiloft syntax (e.g. 'wfstate=Active',
                    'company_name~=\\'Iver\\'')
             fields: Fields to return
+            limit: Maximum number of records to return (default 500)
         """
-        search_data = {
-            "search": "",
-            "field": fields or [],
-            "query": query,
-        }
-        response = await self._make_request("POST", f"{entity_path}/search", json=search_data)
+        search_data = {"query": query}
+        if fields:
+            search_data["field"] = fields
+        response = await self._make_request(
+            "POST", f"{entity_path}/search",
+            json=search_data,
+        )
         if not response.get('success', False):
             raise AgiloftAPIError(f"Search failed: {response.get('message', 'Unknown error')}")
         return response.get('result', [])

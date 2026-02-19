@@ -42,6 +42,7 @@ class EntityConfig:
 # Phase 1: Contract entity
 # Phase 2: Company, Attachment entities
 # Phase 3: Contact, Employee, Customer entities
+# Phase 5: Contract Type entity
 ENTITY_REGISTRY: Dict[str, EntityConfig] = {
     "contract": EntityConfig(
         key="contract",
@@ -210,6 +211,45 @@ ENTITY_REGISTRY: Dict[str, EntityConfig] = {
             "type_of_contact", "title", "_login"
         ],
         required_fields=["_login", "password", "sso_auth_method"],
+    ),
+    "contract_type": EntityConfig(
+        key="contract_type",
+        key_plural="contract_types",
+        api_path="/contract_type",
+        display_name="Contract Type",
+        display_name_plural="Contract Types",
+        text_search_fields=["contract_type"],
+        key_fields={
+            "contract_type": {"type": "string", "description": "Contract type name (REQUIRED)"},
+            "party_type": {"type": "string", "description": "Party type (REQUIRED)"},
+            "uses_tasks": {"type": "string", "description": "Uses tasks flag (REQUIRED)"},
+            "default_cost_type": {"type": "string", "description": "Default cost type (REQUIRED)"},
+            "default_contract_term_in_months": {"type": "integer", "description": "Default contract term in months (REQUIRED)"},
+            "default_autorenewal_term_in_months": {"type": "integer", "description": "Default auto-renewal term in months (REQUIRED)"},
+            "default_days_in_advance_to_cancel_auto_renewal": {"type": "integer", "description": "Default days in advance to cancel auto-renewal (REQUIRED)"},
+            "description": {"type": "string", "description": "Contract type description"},
+            "status": {"type": "string", "description": "Contract type status"},
+            "sort_order": {"type": "number", "description": "Sort order"},
+            "available_for_record_types": {"type": "string", "description": "Available for record types"},
+            "default_renewal_type": {"type": "string", "description": "Default renewal type (linked field)"},
+            "default_workflow_title": {"type": "string", "description": "Default workflow title (linked field)"},
+            "default_task_workflow_title": {"type": "string", "description": "Default task workflow title (linked field)"},
+            "default_question_set": {"type": "string", "description": "Default question set for supplier evaluation (linked field)"},
+            "self_serve_available": {"type": "string", "description": "Self-serve available flag"},
+            "enable_ad_hoc_tasks": {"type": "string", "description": "Enable ad hoc tasks flag"},
+            "deleteable": {"type": "string", "description": "Deletable flag"},
+        },
+        default_search_fields=[
+            "id", "contract_type", "party_type", "status", "description",
+            "sort_order", "available_for_record_types", "default_renewal_type",
+            "default_contract_term_in_months", "default_workflow_title",
+            "self_serve_available", "uses_tasks"
+        ],
+        required_fields=[
+            "contract_type", "party_type", "uses_tasks", "default_cost_type",
+            "default_contract_term_in_months", "default_autorenewal_term_in_months",
+            "default_days_in_advance_to_cancel_auto_renewal"
+        ],
     ),
 }
 
