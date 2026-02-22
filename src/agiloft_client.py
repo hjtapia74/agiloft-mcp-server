@@ -185,6 +185,10 @@ class AgiloftClient:
 
                 return json.loads(response_text)
 
+        except asyncio.TimeoutError:
+            error_msg = f"Request timed out for {method} {url}"
+            logger.error(error_msg)
+            raise AgiloftAPIError(error_msg)
         except aiohttp.ClientError as e:
             error_msg = f"HTTP client error for {method} {url}: {str(e)}"
             logger.error(error_msg)
@@ -309,16 +313,23 @@ class AgiloftClient:
     async def attach_file(self, entity_path: str, record_id: int,
                           field: str, file_name: str,
                           file_data: bytes) -> Dict[str, Any]:
-        """Attach a file to a record."""
+        """Attach a file to a record.
+
+        Uses a longer timeout (120s) than the default session timeout (30s)
+        to accommodate large file uploads.
+        """
         form_data = aiohttp.FormData()
         form_data.add_field('uploadFile', file_data, filename=file_name)
         params = {"field": field, "fileName": file_name}
+        # Use a longer timeout for file uploads
+        upload_timeout = aiohttp.ClientTimeout(total=120)
         # Remove Content-Type to let aiohttp set multipart boundary
         response = await self._make_request(
             "POST", f"{entity_path}/attach/{record_id}",
             params=params,
             data=form_data,
             headers={"Content-Type": None},
+            timeout=upload_timeout,
         )
         return response
 
