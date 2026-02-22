@@ -62,6 +62,7 @@ ENTITY_REGISTRY: Dict[str, EntityConfig] = {
             "internal_contract_owner": {"type": "string", "description": "Internal contract owner (LINKED FIELD - value MUST start with colon, e.g. ':Robert Barash')"},
             "contract_type": {"type": "string", "description": "Type of contract (LINKED FIELD - value MUST start with colon, e.g. ':Services Agreement', ':Master Services Agreement', ':SaaS Agreement', ':Non-Disclosure Agreement')"},
             "contract_description": {"type": "string", "description": "Contract description"},
+            "contract_comments": {"type": "string", "description": "Contract comments - use this field for analysis notes, review comments, and observations"},
             "wfstate": {"type": "string", "description": "Contract status (workflow state)"},
             "confidential": {"type": "string", "description": "Confidentiality level (REQUIRED)"},
             "evaluation_frequency": {"type": "integer", "description": "Evaluation frequency (REQUIRED)"},

@@ -335,7 +335,7 @@ async def handle_get_contract_summary(
                 "contract_end_date", "contract_term_in_months", "wfstate",
                 "internal_contract_owner", "date_signed", "confidential",
                 "auto_renewal_term_in_months", "evaluation_frequency",
-                "contract_description", "cost_center",
+                "contract_description", "contract_comments", "cost_center",
             ],
         )
         data["contract"] = contract
