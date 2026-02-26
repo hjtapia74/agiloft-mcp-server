@@ -11,6 +11,7 @@ using the dispatch map from tool_generator.
 import base64
 import json
 import logging
+import os
 import re
 from typing import Any, Dict, List
 
@@ -221,14 +222,34 @@ async def handle_attach_file(entity: EntityConfig, arguments: Dict[str, Any],
 
 async def handle_retrieve_attachment(entity: EntityConfig, arguments: Dict[str, Any],
                                      client: AgiloftClient) -> List[TextContent]:
-    """Handle attachment retrieval requests."""
+    """Handle attachment retrieval requests.
+
+    Downloads the binary file from Agiloft and saves it to local disk.
+    Returns metadata (path, name, size, content_type) — no binary in MCP.
+    """
     record_id = arguments.get("record_id")
     field_name = arguments.get("field")
     file_position = arguments.get("file_position", 0)
+    save_dir = arguments.get("save_dir")
+
+    # Reject sandbox paths that Claude Desktop may hallucinate
+    if save_dir:
+        _sandbox_prefixes = ("/mnt/", "/home/claude", "/tmp/sandbox", "/sandbox/")
+        if any(save_dir.startswith(p) for p in _sandbox_prefixes):
+            return _format_error(
+                "retrieve_attachment", entity,
+                f"'{save_dir}' is a sandbox path, not a real filesystem path. "
+                "The MCP server runs on the local machine and needs the actual macOS "
+                "path (e.g. '/Users/hector/Downloads'). "
+                "Please ask the user for the real directory on their Mac.",
+                record_id,
+            )
+        save_dir = os.path.expanduser(save_dir)
 
     try:
         result = await client.retrieve_attachment(
-            entity.api_path, record_id, field_name, file_position
+            entity.api_path, record_id, field_name, file_position,
+            save_dir=save_dir,
         )
         return _format_response("retrieve_attachment", entity, result, record_id)
     except Exception as e:

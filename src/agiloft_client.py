@@ -13,8 +13,10 @@ import aiohttp
 import asyncio
 import json
 import logging
+import os
+import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Handle both direct execution and package imports
 try:
@@ -127,6 +129,149 @@ class AgiloftClient:
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+
+    @staticmethod
+    def _guess_extension(content_type: str) -> str:
+        """Map a MIME content type to a file extension."""
+        mime_map = {
+            "application/pdf": ".pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+            "application/msword": ".doc",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+            "application/vnd.ms-excel": ".xls",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+            "application/vnd.ms-powerpoint": ".ppt",
+            "application/zip": ".zip",
+            "application/xml": ".xml",
+            "text/xml": ".xml",
+            "text/plain": ".txt",
+            "text/csv": ".csv",
+            "text/html": ".html",
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/gif": ".gif",
+            "application/json": ".json",
+            "application/octet-stream": ".bin",
+        }
+        # Normalize: strip parameters like charset
+        base = content_type.split(";")[0].strip().lower() if content_type else ""
+        return mime_map.get(base, ".bin")
+
+    @staticmethod
+    def _read_binary_response_headers(response) -> Tuple[Optional[str], str]:
+        """Extract filename and content type from response headers.
+
+        Returns:
+            (filename_or_None, content_type)
+        """
+        content_type = response.headers.get("Content-Type", "application/octet-stream")
+        filename = None
+        cd = response.headers.get("Content-Disposition", "")
+        if cd:
+            # Try quoted filename first, then unquoted
+            match = re.search(r'filename="(.+?)"', cd)
+            if not match:
+                match = re.search(r"filename=([^\s;]+)", cd)
+            if match:
+                filename = match.group(1)
+        return filename, content_type
+
+    async def _make_binary_request(self, method: str, endpoint: str,
+                                   **kwargs) -> Tuple[bytes, Optional[str], str]:
+        """Make an authenticated request that returns binary data.
+
+        Same auth/retry pattern as _make_request but reads bytes instead of
+        text. Uses a 120s timeout for large downloads.
+
+        Returns:
+            (file_bytes, filename_or_None, content_type)
+        """
+        await self.ensure_authenticated()
+        await self.ensure_session()
+
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        headers = self._get_auth_headers()
+
+        params = kwargs.get('params', {})
+        if 'lang' not in params:
+            params['lang'] = self.language
+            kwargs['params'] = params
+
+        if 'headers' in kwargs:
+            for k, v in kwargs.pop('headers').items():
+                if v is None:
+                    headers.pop(k, None)
+                else:
+                    headers[k] = v
+        kwargs['headers'] = headers
+
+        # Use a longer timeout for file downloads
+        download_timeout = aiohttp.ClientTimeout(total=120)
+        kwargs['timeout'] = download_timeout
+
+        logger.debug(f"{method.upper()} {url} (binary)")
+
+        try:
+            async with self.session.request(method, url, **kwargs) as response:
+                # Check if response is a JSON error
+                resp_ct = response.headers.get("Content-Type", "")
+                if response.status == 401:
+                    logger.warning(f"Received 401 for binary {method} {url}, re-authenticating...")
+                    await self._authenticate()
+                    kwargs['headers'] = self._get_auth_headers()
+                    async with self.session.request(method, url, **kwargs) as retry_response:
+                        retry_ct = retry_response.headers.get("Content-Type", "")
+                        if retry_response.status != 200:
+                            error_text = await retry_response.text()
+                            raise AgiloftAPIError(
+                                f"Binary request failed after re-auth: {retry_response.status}",
+                                status_code=retry_response.status,
+                                response_text=error_text,
+                            )
+                        if "application/json" in retry_ct:
+                            error_text = await retry_response.text()
+                            data = json.loads(error_text)
+                            if not data.get("success", True):
+                                raise AgiloftAPIError(
+                                    f"API error: {data.get('message', error_text)}",
+                                    status_code=retry_response.status,
+                                    response_text=error_text,
+                                )
+                        file_bytes = await retry_response.read()
+                        filename, content_type = self._read_binary_response_headers(retry_response)
+                        return file_bytes, filename, content_type
+
+                elif response.status != 200:
+                    error_text = await response.text()
+                    raise AgiloftAPIError(
+                        f"Binary request failed: {response.status} - {error_text}",
+                        status_code=response.status,
+                        response_text=error_text,
+                    )
+
+                # Check if 200 response is actually a JSON error
+                if "application/json" in resp_ct:
+                    error_text = await response.text()
+                    data = json.loads(error_text)
+                    if not data.get("success", True):
+                        raise AgiloftAPIError(
+                            f"API error: {data.get('message', error_text)}",
+                            status_code=response.status,
+                            response_text=error_text,
+                        )
+
+                file_bytes = await response.read()
+                filename, content_type = self._read_binary_response_headers(response)
+                return file_bytes, filename, content_type
+
+        except asyncio.TimeoutError:
+            error_msg = f"Binary request timed out for {method} {url}"
+            logger.error(error_msg)
+            raise AgiloftAPIError(error_msg)
+        except aiohttp.ClientError as e:
+            error_msg = f"HTTP client error for binary {method} {url}: {str(e)}"
+            logger.error(error_msg)
+            raise AgiloftAPIError(error_msg)
 
     async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Make an authenticated request to the Agiloft API."""
@@ -334,13 +479,66 @@ class AgiloftClient:
         return response
 
     async def retrieve_attachment(self, entity_path: str, record_id: int,
-                                  field: str, file_position: int = 0) -> Dict[str, Any]:
-        """Retrieve an attachment from a record."""
+                                  field: str, file_position: int = 0,
+                                  save_dir: Optional[str] = None) -> Dict[str, Any]:
+        """Retrieve an attachment from a record and save it to local disk.
+
+        The Agiloft retrieveAttach endpoint returns raw binary bytes, not JSON.
+        This method downloads the file and saves it to ``save_dir``.
+
+        Args:
+            entity_path: API path for the entity
+            record_id: ID of the record
+            field: File field name on the record
+            file_position: 0-based index of the file in the field
+            save_dir: Directory to save the file. Defaults to ~/Downloads/agiloft/
+
+        Returns:
+            Dict with file_path, file_name, file_size_bytes, content_type,
+            record_id, and field.
+        """
+        if save_dir is None:
+            save_dir = os.path.expanduser("~/Downloads/agiloft")
+
         params = {"field": field, "filePosition": file_position}
-        response = await self._make_request(
-            "POST", f"{entity_path}/retrieveAttach/{record_id}", params=params
+        file_bytes, filename, content_type = await self._make_binary_request(
+            "POST", f"{entity_path}/retrieveAttach/{record_id}", params=params,
         )
-        return response
+
+        if not file_bytes:
+            raise AgiloftAPIError(
+                f"Empty response from retrieveAttach for record {record_id}, field '{field}'"
+            )
+
+        # Build filename if the server didn't provide one
+        if not filename:
+            ext = self._guess_extension(content_type)
+            filename = f"{field}_{record_id}{ext}"
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Handle filename collisions
+        base, ext = os.path.splitext(filename)
+        target = os.path.join(save_dir, filename)
+        counter = 1
+        while os.path.exists(target):
+            target = os.path.join(save_dir, f"{base}_{counter}{ext}")
+            counter += 1
+
+        with open(target, "wb") as f:
+            f.write(file_bytes)
+
+        final_name = os.path.basename(target)
+        logger.info(f"Saved attachment to {target} ({len(file_bytes)} bytes)")
+
+        return {
+            "file_path": target,
+            "file_name": final_name,
+            "file_size_bytes": len(file_bytes),
+            "content_type": content_type,
+            "record_id": record_id,
+            "field": field,
+        }
 
     async def remove_attachment(self, entity_path: str, record_id: int,
                                 field: str, file_position: int = 0) -> Dict[str, Any]:

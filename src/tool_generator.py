@@ -256,7 +256,9 @@ def _gen_retrieve_attach_tool(entity: EntityConfig) -> Tuple[Tool, str]:
     return Tool(
         name=_tool_name("retrieve_attachment", entity),
         description=(
-            f"Download an attachment from a {entity.display_name.lower()} record. "
+            f"Download an attachment from a {entity.display_name.lower()} record "
+            f"and save it to local disk. Returns file metadata (path, name, size, "
+            f"content_type) — no binary data in the response. "
             f"Use get_attachment_info first to find the correct field and file position."
         ),
         inputSchema={
@@ -276,6 +278,15 @@ def _gen_retrieve_attach_tool(entity: EntityConfig) -> Tuple[Tool, str]:
                     "description": "Position of the file in the field (0-based, default 0)",
                     "default": 0,
                     "minimum": 0,
+                },
+                "save_dir": {
+                    "type": "string",
+                    "description": (
+                        "Directory to save the downloaded file. Must be an absolute "
+                        "macOS path (e.g. '/Users/jane/Downloads'). "
+                        "Defaults to ~/Downloads/agiloft/. "
+                        "Do NOT use sandbox paths (/mnt/, /home/claude/, /tmp/sandbox/)."
+                    ),
                 },
             },
             "required": ["record_id", "field"],

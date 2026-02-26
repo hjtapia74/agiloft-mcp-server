@@ -4,6 +4,7 @@ Unit tests for agiloft_client.py
 
 import asyncio
 import json
+import os
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
@@ -420,3 +421,260 @@ class TestAgiloftClient:
                 'POST', '/contract/evaluateFormat/123',
                 json={'formula': '$contract_amount * 1.1'}
             )
+
+
+class TestGuessExtension:
+    """Test MIME type to file extension mapping."""
+
+    def test_common_types(self):
+        assert AgiloftClient._guess_extension("application/pdf") == ".pdf"
+        assert AgiloftClient._guess_extension(
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ) == ".docx"
+        assert AgiloftClient._guess_extension("text/plain") == ".txt"
+        assert AgiloftClient._guess_extension("image/png") == ".png"
+
+    def test_with_charset_parameter(self):
+        assert AgiloftClient._guess_extension("text/html; charset=utf-8") == ".html"
+
+    def test_unknown_type(self):
+        assert AgiloftClient._guess_extension("application/x-custom") == ".bin"
+
+    def test_empty_or_none(self):
+        assert AgiloftClient._guess_extension("") == ".bin"
+        assert AgiloftClient._guess_extension(None) == ".bin"
+
+
+class TestReadBinaryResponseHeaders:
+    """Test Content-Disposition and Content-Type header parsing."""
+
+    def test_quoted_filename(self):
+        resp = MagicMock()
+        resp.headers = {
+            "Content-Disposition": 'attachment; filename="report.docx"',
+            "Content-Type": "application/octet-stream",
+        }
+        filename, ct = AgiloftClient._read_binary_response_headers(resp)
+        assert filename == "report.docx"
+        assert ct == "application/octet-stream"
+
+    def test_unquoted_filename(self):
+        resp = MagicMock()
+        resp.headers = {
+            "Content-Disposition": "attachment; filename=data.csv",
+            "Content-Type": "text/csv",
+        }
+        filename, ct = AgiloftClient._read_binary_response_headers(resp)
+        assert filename == "data.csv"
+        assert ct == "text/csv"
+
+    def test_no_content_disposition(self):
+        resp = MagicMock()
+        resp.headers = {"Content-Type": "application/pdf"}
+        filename, ct = AgiloftClient._read_binary_response_headers(resp)
+        assert filename is None
+        assert ct == "application/pdf"
+
+    def test_no_headers(self):
+        resp = MagicMock()
+        resp.headers = {}
+        filename, ct = AgiloftClient._read_binary_response_headers(resp)
+        assert filename is None
+        assert ct == "application/octet-stream"
+
+
+class TestMakeBinaryRequest:
+    """Test binary request method."""
+
+    @pytest.mark.asyncio
+    async def test_success(self, client):
+        """Successful binary download."""
+        client.access_token = 'test_token'
+        client.token_expires_at = datetime.now() + timedelta(minutes=10)
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.read = AsyncMock(return_value=b"binary file data")
+        mock_resp.headers = {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": 'attachment; filename="test.pdf"',
+        }
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.request.return_value = mock_cm
+        client.session = mock_session
+
+        with patch.object(client, 'ensure_session'), \
+             patch.object(client, 'ensure_authenticated'):
+            data, filename, ct = await client._make_binary_request('POST', '/test')
+
+        assert data == b"binary file data"
+        assert filename == "test.pdf"
+        assert ct == "application/pdf"
+
+    @pytest.mark.asyncio
+    async def test_401_retry(self, client):
+        """Should re-authenticate on 401 and retry."""
+        client.access_token = 'test_token'
+        client.token_expires_at = datetime.now() + timedelta(minutes=10)
+
+        # First: 401
+        mock_resp_401 = AsyncMock()
+        mock_resp_401.status = 401
+        mock_resp_401.headers = {"Content-Type": "text/html"}
+        mock_resp_401.text = AsyncMock(return_value="Unauthorized")
+
+        mock_cm_401 = MagicMock()
+        mock_cm_401.__aenter__ = AsyncMock(return_value=mock_resp_401)
+        mock_cm_401.__aexit__ = AsyncMock(return_value=None)
+
+        # Second: 200
+        mock_resp_200 = AsyncMock()
+        mock_resp_200.status = 200
+        mock_resp_200.read = AsyncMock(return_value=b"file data")
+        mock_resp_200.headers = {
+            "Content-Type": "application/pdf",
+            "Content-Disposition": 'attachment; filename="doc.pdf"',
+        }
+
+        mock_cm_200 = MagicMock()
+        mock_cm_200.__aenter__ = AsyncMock(return_value=mock_resp_200)
+        mock_cm_200.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.request.side_effect = [mock_cm_401, mock_cm_200]
+        client.session = mock_session
+
+        with patch.object(client, 'ensure_session'), \
+             patch.object(client, 'ensure_authenticated'), \
+             patch.object(client, '_authenticate') as mock_auth:
+            data, filename, ct = await client._make_binary_request('POST', '/test')
+
+        assert data == b"file data"
+        mock_auth.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_api_error_json(self, client):
+        """Should raise AgiloftAPIError if 200 response is a JSON error."""
+        client.access_token = 'test_token'
+        client.token_expires_at = datetime.now() + timedelta(minutes=10)
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.headers = {"Content-Type": "application/json"}
+        mock_resp.text = AsyncMock(return_value='{"success": false, "message": "No file found"}')
+
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_session = MagicMock()
+        mock_session.request.return_value = mock_cm
+        client.session = mock_session
+
+        with patch.object(client, 'ensure_session'), \
+             patch.object(client, 'ensure_authenticated'):
+            with pytest.raises(AgiloftAPIError, match="No file found"):
+                await client._make_binary_request('POST', '/test')
+
+    @pytest.mark.asyncio
+    async def test_timeout(self, client):
+        """Should raise AgiloftAPIError on timeout."""
+        client.access_token = 'test_token'
+        client.token_expires_at = datetime.now() + timedelta(minutes=10)
+
+        mock_session = MagicMock()
+        mock_session.request.side_effect = asyncio.TimeoutError()
+        client.session = mock_session
+
+        with patch.object(client, 'ensure_session'), \
+             patch.object(client, 'ensure_authenticated'):
+            with pytest.raises(AgiloftAPIError, match="timed out"):
+                await client._make_binary_request('POST', '/test')
+
+
+class TestRetrieveAttachment:
+    """Test retrieve_attachment save-to-disk behavior."""
+
+    @pytest.mark.asyncio
+    async def test_success_save(self, client, tmp_path):
+        """Should save downloaded bytes to disk and return metadata."""
+        binary_data = b"DOCX binary content"
+        with patch.object(
+            client, '_make_binary_request',
+            return_value=(binary_data, "contract.docx", "application/octet-stream"),
+        ):
+            result = await client.retrieve_attachment(
+                '/attachment', 612, 'attached_file', save_dir=str(tmp_path),
+            )
+
+        assert result["file_name"] == "contract.docx"
+        assert result["file_size_bytes"] == len(binary_data)
+        assert result["record_id"] == 612
+        assert result["field"] == "attached_file"
+        assert os.path.isfile(result["file_path"])
+        with open(result["file_path"], "rb") as f:
+            assert f.read() == binary_data
+
+    @pytest.mark.asyncio
+    async def test_filename_collision(self, client, tmp_path):
+        """Should append _1 suffix when file already exists."""
+        # Pre-create existing file
+        existing = tmp_path / "contract.docx"
+        existing.write_bytes(b"old")
+
+        with patch.object(
+            client, '_make_binary_request',
+            return_value=(b"new data", "contract.docx", "application/octet-stream"),
+        ):
+            result = await client.retrieve_attachment(
+                '/attachment', 612, 'attached_file', save_dir=str(tmp_path),
+            )
+
+        assert result["file_name"] == "contract_1.docx"
+        assert os.path.isfile(result["file_path"])
+
+    @pytest.mark.asyncio
+    async def test_no_filename_fallback(self, client, tmp_path):
+        """Should generate filename from field and record_id when server provides none."""
+        with patch.object(
+            client, '_make_binary_request',
+            return_value=(b"data", None, "application/pdf"),
+        ):
+            result = await client.retrieve_attachment(
+                '/attachment', 612, 'attached_file', save_dir=str(tmp_path),
+            )
+
+        assert result["file_name"] == "attached_file_612.pdf"
+
+    @pytest.mark.asyncio
+    async def test_empty_response_error(self, client, tmp_path):
+        """Should raise error on empty binary response."""
+        with patch.object(
+            client, '_make_binary_request',
+            return_value=(b"", "test.pdf", "application/pdf"),
+        ):
+            with pytest.raises(AgiloftAPIError, match="Empty response"):
+                await client.retrieve_attachment(
+                    '/attachment', 612, 'attached_file', save_dir=str(tmp_path),
+                )
+
+    @pytest.mark.asyncio
+    async def test_default_directory(self, client):
+        """Should default to ~/Downloads/agiloft/ when no save_dir given."""
+        default_dir = os.path.expanduser("~/Downloads/agiloft")
+
+        with patch.object(
+            client, '_make_binary_request',
+            return_value=(b"data", "test.pdf", "application/pdf"),
+        ), patch('src.agiloft_client.os.makedirs') as mock_makedirs, \
+           patch('builtins.open', MagicMock()), \
+           patch('src.agiloft_client.os.path.exists', return_value=False):
+            result = await client.retrieve_attachment('/attachment', 1, 'field')
+
+        mock_makedirs.assert_called_once_with(default_dir, exist_ok=True)
+        assert result["file_path"].startswith(default_dir)

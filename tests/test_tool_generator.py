@@ -275,6 +275,15 @@ class TestToolGenerator:
         for name in expected:
             assert name in tool_names, f"Missing evaluate format tool: {name}"
 
+    def test_retrieve_attachment_has_save_dir(self):
+        """Retrieve attachment tool should have optional save_dir parameter."""
+        tool = next(t for t in self.tools if t.name == "agiloft_retrieve_attachment_contract")
+        props = tool.inputSchema["properties"]
+        assert "save_dir" in props
+        assert props["save_dir"]["type"] == "string"
+        # save_dir should NOT be required
+        assert "save_dir" not in tool.inputSchema["required"]
+
     def test_tool_count(self):
         """Verify total tool count is 84 (12 per entity × 7 entities)."""
         assert len(self.tools) == 84

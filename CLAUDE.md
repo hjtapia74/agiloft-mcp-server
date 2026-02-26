@@ -96,7 +96,7 @@ PYTHONPATH=. python -m pytest tests/test_workflow_handlers.py -v
 - **`agiloft_get_contract_summary`**: Gets contract + company + attachments + health check in one call
 - **`agiloft_find_expiring_contracts`**: Finds expiring contracts with urgency categories (URGENT/UPCOMING/PLANNING)
 - **`agiloft_onboard_company_with_contact`**: Creates company + optional primary contact in one operation
-- **`agiloft_attach_file_to_contract`**: Uploads a file to a contract via the Attachment entity (correct way to attach files)
+- **`agiloft_attach_file_to_contract`**: Uploads a file to a contract via the Attachment entity. Requires a local macOS `file_path` (e.g. `/Users/jane/Downloads/contract.pdf`). Does NOT accept base64 — large payloads hang the MCP stdio pipe. Rejects sandbox paths (`/mnt/`, `/home/claude/`, `/tmp/`).
 
 ### Tool Naming
 - Singular for single-record ops: `agiloft_get_contract`
@@ -121,6 +121,10 @@ Prompts appear in Claude Desktop's slash-command menu and guide multi-step workf
 - **Async Architecture**: Fully async/await based using aiohttp and asyncio
 - **Testing**: 213 unit tests with pytest, including async test support and mocking
 - **Workflow Responses**: Composite tools return enriched JSON with `next_steps` arrays and `warnings` for AI guidance
+- **Debug Logging**: Server writes detailed logs to `~/Library/Logs/Claude/agiloft-server-debug.log` (uses `logging.basicConfig(force=True)` to override MCP library defaults)
+- **File Attachments**: Files attach via the Attachment entity, not the contract table directly. The MCP server reads files from local disk — base64 encoding was removed because large payloads hang the MCP stdio transport
+- **File Downloads**: `retrieve_attachment` saves binary files to `~/Downloads/agiloft/` by default (configurable via `save_dir`). Returns local file path, name, size, and content_type as JSON — no binary data in MCP response. Handles filename collisions with `_1`, `_2` suffixes. Rejects sandbox paths.
+- **Contract Comments**: Use `contract_comments` field (not `contract_description`) for analysis notes, review comments, and observations
 
 ## Testing Strategy
 
