@@ -265,6 +265,54 @@ _ATTACH_FILE_TO_CONTRACT = Tool(
     },
 )
 
+_DOWNLOAD_CONTRACT_ATTACHMENT = Tool(
+    name="agiloft_download_contract_attachment",
+    description=(
+        "Download an attachment from a contract. This is the CORRECT way to "
+        "retrieve contract attachments. DO NOT use agiloft_retrieve_attachment_contract "
+        "(which tries to download from the contract table directly and will ALWAYS fail "
+        "because contracts have no file fields in Agiloft). "
+        "This tool finds the Attachment record(s) linked to the contract and downloads "
+        "the file. If multiple attachments exist, returns a list for the user to choose from."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "contract_id": {
+                "type": "integer",
+                "description": "The ID of the contract whose attachment to download",
+                "minimum": 1,
+            },
+            "attachment_id": {
+                "type": "integer",
+                "description": (
+                    "Specific attachment record ID to download. "
+                    "If provided, skips the search and downloads directly. "
+                    "Use this when you already know the attachment ID "
+                    "(e.g. from agiloft_search_attachments or agiloft_get_contract_summary)."
+                ),
+                "minimum": 1,
+            },
+            "file_position": {
+                "type": "integer",
+                "description": "Position of the file in the field (0-based, default 0)",
+                "default": 0,
+                "minimum": 0,
+            },
+            "save_dir": {
+                "type": "string",
+                "description": (
+                    "Directory to save the downloaded file. Must be an absolute "
+                    "macOS path (e.g. '/Users/jane/Downloads'). "
+                    "Defaults to ~/Downloads/agiloft/. "
+                    "Do NOT use sandbox paths (/mnt/, /home/claude/, /tmp/sandbox/)."
+                ),
+            },
+        },
+        "required": ["contract_id"],
+    },
+)
+
 # Master list: (Tool, handler_name)
 _ALL_WORKFLOW_TOOLS = [
     (_PREFLIGHT_CREATE_CONTRACT, "preflight_create_contract"),
@@ -273,4 +321,5 @@ _ALL_WORKFLOW_TOOLS = [
     (_FIND_EXPIRING_CONTRACTS, "find_expiring_contracts"),
     (_ONBOARD_COMPANY_WITH_CONTACT, "onboard_company_with_contact"),
     (_ATTACH_FILE_TO_CONTRACT, "attach_file_to_contract"),
+    (_DOWNLOAD_CONTRACT_ATTACHMENT, "download_contract_attachment"),
 ]

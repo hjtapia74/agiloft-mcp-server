@@ -357,14 +357,18 @@ async def handle_get_contract_summary(
             except Exception as e:
                 warnings.append(f"Could not fetch company details: {e}")
 
-        # Step 3: Check attachments
+        # Step 3: Check attachments (via Attachment entity, not contract table)
         try:
-            attach_info = await client.get_attachment_info(
-                "/contract", contract_id, "attached_file"
+            attach_results = await client.search_records(
+                "/attachment", f"contract_id='{contract_id}'",
+                ["id", "title", "status", "attached_file"],
             )
-            data["attachments"] = attach_info
+            data["attachments"] = {
+                "count": len(attach_results),
+                "records": attach_results,
+            }
         except Exception:
-            data["attachments"] = {"count": 0, "note": "No attachments or field not available"}
+            data["attachments"] = {"count": 0, "records": [], "note": "Could not search attachments"}
 
         # Step 4: Health checks
         health_issues: List[str] = []
@@ -411,7 +415,7 @@ async def handle_get_contract_summary(
             "Available actions:\n"
             "- Update fields: agiloft_update_contract\n"
             "- Upload attachment: agiloft_attach_file_to_contract (NOT agiloft_attach_file_contract)\n"
-            "- Download attachment: agiloft_retrieve_attachment_attachment (on the attachment record)\n"
+            "- Download attachment: agiloft_download_contract_attachment (NOT agiloft_retrieve_attachment_contract)\n"
             "- Trigger action: agiloft_action_button_contract\n"
             "- View company: agiloft_get_company"
         )
@@ -793,6 +797,140 @@ async def handle_attach_file_to_contract(
 
 
 # ---------------------------------------------------------------------------
+# Handler: download_contract_attachment
+# ---------------------------------------------------------------------------
+
+async def handle_download_contract_attachment(
+    arguments: Dict[str, Any], client: AgiloftClient
+) -> List[TextContent]:
+    """Download an attachment from a contract via the Attachment entity.
+
+    Contracts don't have file fields. Files live in Attachment records linked
+    via contract_id or contract_title. This handler:
+    1. If attachment_id provided, downloads directly
+    2. Otherwise, searches Attachment table by contract_id
+    3. Fallback: searches by contract_title if contract_id search is empty
+    4. Single result -> auto-downloads; multiple -> returns list for selection
+    """
+    contract_id = arguments.get("contract_id")
+    attachment_id = arguments.get("attachment_id")
+    file_position = arguments.get("file_position", 0)
+    save_dir = arguments.get("save_dir")
+
+    data: Dict[str, Any] = {}
+    next_steps: List[str] = []
+
+    # Validate save_dir if provided
+    if save_dir:
+        _sandbox_prefixes = ("/mnt/", "/home/claude", "/tmp/sandbox", "/sandbox/")
+        if any(save_dir.startswith(p) for p in _sandbox_prefixes):
+            return _workflow_error(
+                "download_contract_attachment",
+                f"'{save_dir}' is a sandbox path, not a real filesystem path. "
+                "The MCP server runs on the local machine and needs the actual macOS "
+                "path (e.g. '/Users/hector/Downloads'). "
+                "Please ask the user for the real directory on their Mac.",
+            )
+
+    try:
+        # If attachment_id given, skip search and download directly
+        if attachment_id:
+            logger.info(
+                f"download_contract_attachment: direct download, "
+                f"attachment_id={attachment_id}"
+            )
+            file_info = await client.retrieve_attachment(
+                "/attachment", attachment_id, "attached_file",
+                file_position=file_position, save_dir=save_dir,
+            )
+            data["file"] = file_info
+            data["attachment_id"] = attachment_id
+            data["contract_id"] = contract_id
+            return _workflow_response(
+                "download_contract_attachment", data,
+                next_steps=["File downloaded successfully."],
+            )
+
+        # Step 1: Search for attachments by contract_id
+        logger.info(
+            f"download_contract_attachment: searching attachments for "
+            f"contract_id={contract_id}"
+        )
+        attach_results = await client.search_records(
+            "/attachment", f"contract_id='{contract_id}'",
+            ["id", "title", "status", "attached_file"],
+        )
+
+        # Step 2: Fallback - search by contract_title
+        if not attach_results:
+            logger.info(
+                "No attachments found by contract_id, trying contract_title fallback"
+            )
+            try:
+                contract = await client.get_record(
+                    "/contract", contract_id, ["id", "contract_title1"]
+                )
+                contract_title = contract.get("contract_title1", "")
+                data["contract_title"] = contract_title
+
+                if contract_title:
+                    attach_results = await client.search_records(
+                        "/attachment", f"contract_title~='{contract_title}'",
+                        ["id", "title", "status", "attached_file"],
+                    )
+            except Exception as e:
+                logger.warning(f"Could not fetch contract title: {e}")
+
+        # Step 3: Handle results
+        if not attach_results:
+            return _workflow_error(
+                "download_contract_attachment",
+                f"No attachments found for contract {contract_id}. "
+                "The contract may not have any files attached. "
+                "Use agiloft_attach_file_to_contract to upload a file first.",
+            )
+
+        if len(attach_results) == 1:
+            # Single attachment - download automatically
+            found_id = attach_results[0].get("id")
+            data["attachment_record"] = attach_results[0]
+            logger.info(
+                f"Single attachment found (id={found_id}), downloading..."
+            )
+            file_info = await client.retrieve_attachment(
+                "/attachment", found_id, "attached_file",
+                file_position=file_position, save_dir=save_dir,
+            )
+            data["file"] = file_info
+            data["attachment_id"] = found_id
+            data["contract_id"] = contract_id
+            return _workflow_response(
+                "download_contract_attachment", data,
+                next_steps=["File downloaded successfully."],
+            )
+
+        # Multiple attachments - return list for user to pick
+        data["contract_id"] = contract_id
+        data["attachment_count"] = len(attach_results)
+        data["attachments"] = attach_results
+        next_steps.append(
+            f"Found {len(attach_results)} attachments for contract {contract_id}. "
+            "Call this tool again with the specific attachment_id to download."
+        )
+        return _workflow_response(
+            "download_contract_attachment", data,
+            next_steps=next_steps,
+        )
+
+    except Exception as e:
+        logger.error(f"download_contract_attachment failed: {e}", exc_info=True)
+        return _workflow_error(
+            "download_contract_attachment", str(e),
+            partial_data=data if data else None,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
@@ -803,6 +941,7 @@ WORKFLOW_HANDLERS = {
     "find_expiring_contracts": handle_find_expiring_contracts,
     "onboard_company_with_contact": handle_onboard_company_with_contact,
     "attach_file_to_contract": handle_attach_file_to_contract,
+    "download_contract_attachment": handle_download_contract_attachment,
 }
 
 

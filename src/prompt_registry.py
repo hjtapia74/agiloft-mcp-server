@@ -134,8 +134,9 @@ def _render_contract_review(arguments: Dict[str, str]) -> GetPromptResult:
     )
 
     steps.append(
-        "\nThen check for attachments using agiloft_get_attachment_info_contract "
-        "on the 'attached_file' field and report how many files are attached."
+        "\nThen check for attachments using agiloft_search_attachments with "
+        "query \"contract_id='<id>'\" (replace <id> with the contract ID) "
+        "and report how many attachment records are linked to the contract."
     )
 
     steps.append(
@@ -150,7 +151,7 @@ def _render_contract_review(arguments: Dict[str, str]) -> GetPromptResult:
         "- Update contract fields (remember: linked fields like contract_type, "
         "company_name, internal_contract_owner need colon prefix, e.g. ':value')\n"
         "- Upload attachment: use agiloft_attach_file_to_contract with file_path parameter (NOT agiloft_attach_file_contract)\n"
-        "- Download attachment: use agiloft_retrieve_attachment_attachment on the attachment record\n"
+        "- Download attachment: use agiloft_download_contract_attachment (NOT agiloft_retrieve_attachment_contract)\n"
         "- Trigger an action button\n"
         "- View the associated company details"
     )

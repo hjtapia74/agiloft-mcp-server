@@ -15,6 +15,7 @@ from src.workflow_handlers import (
     handle_find_expiring_contracts,
     handle_onboard_company_with_contact,
     handle_attach_file_to_contract,
+    handle_download_contract_attachment,
     dispatch_workflow_call,
     WORKFLOW_HANDLERS,
 )
@@ -244,10 +245,11 @@ class TestGetContractSummary:
             "contract_amount": 50000, "internal_contract_owner": "John",
             "date_signed": "2024-01-01",
         }
-        mock_client.search_records.return_value = [
-            {"id": 10, "company_name": "Acme", "type_of_company": "Customer", "status": "Active"}
+        # First call: company search, Second call: attachment search
+        mock_client.search_records.side_effect = [
+            [{"id": 10, "company_name": "Acme", "type_of_company": "Customer", "status": "Active"}],
+            [{"id": 501, "title": "doc.pdf", "status": "Active"}, {"id": 502, "title": "terms.pdf", "status": "Active"}],
         ]
-        mock_client.get_attachment_info.return_value = {"count": 2, "files": []}
 
         result = await handle_get_contract_summary(
             {"contract_id": 1}, mock_client,
@@ -258,6 +260,7 @@ class TestGetContractSummary:
         assert data["data"]["contract"]["id"] == 1
         assert "company" in data["data"]
         assert "attachments" in data["data"]
+        assert data["data"]["attachments"]["count"] == 2
         # Should flag expiring soon
         assert any("expires" in issue.lower() or "urgent" in issue.lower()
                     for issue in data["data"].get("health_issues", []))
@@ -268,7 +271,7 @@ class TestGetContractSummary:
         mock_client.get_record.return_value = {
             "id": 1, "contract_title1": "Test", "wfstate": "Draft",
         }
-        mock_client.get_attachment_info.side_effect = Exception("No field")
+        mock_client.search_records.side_effect = Exception("Search failed")
 
         result = await handle_get_contract_summary(
             {"contract_id": 1}, mock_client,
@@ -540,6 +543,7 @@ class TestDispatchWorkflowCall:
             "find_expiring_contracts",
             "onboard_company_with_contact",
             "attach_file_to_contract",
+            "download_contract_attachment",
         ]
         for name in expected:
             assert name in WORKFLOW_HANDLERS, f"Missing handler: {name}"
@@ -758,3 +762,148 @@ class TestAttachFileToContract:
         assert data["success"] is True
         attach_call = mock_client.attach_file.call_args
         assert attach_call[0][3] == "my_document.docx"
+
+
+# ---------------------------------------------------------------------------
+# Tests: download_contract_attachment
+# ---------------------------------------------------------------------------
+
+class TestDownloadContractAttachment:
+
+    @pytest.mark.asyncio
+    async def test_single_attachment_auto_downloads(self, mock_client):
+        """Single attachment found should auto-download."""
+        mock_client.search_records.return_value = [
+            {"id": 501, "title": "contract.pdf", "status": "Active", "attached_file": "contract.pdf"}
+        ]
+        mock_client.retrieve_attachment.return_value = {
+            "file_path": "/Users/test/Downloads/agiloft/contract.pdf",
+            "file_name": "contract.pdf",
+            "file_size_bytes": 12345,
+            "content_type": "application/pdf",
+        }
+
+        result = await handle_download_contract_attachment(
+            {"contract_id": 100}, mock_client,
+        )
+        data = _parse(result)
+
+        assert data["success"] is True
+        assert data["data"]["attachment_id"] == 501
+        assert data["data"]["file"]["file_name"] == "contract.pdf"
+        # Verify retrieve_attachment was called on /attachment, not /contract
+        mock_client.retrieve_attachment.assert_called_once()
+        call_args = mock_client.retrieve_attachment.call_args
+        assert call_args[0][0] == "/attachment"
+        assert call_args[0][1] == 501
+
+    @pytest.mark.asyncio
+    async def test_multiple_attachments_returns_list(self, mock_client):
+        """Multiple attachments should return list for user to choose."""
+        mock_client.search_records.return_value = [
+            {"id": 501, "title": "doc1.pdf", "status": "Active"},
+            {"id": 502, "title": "doc2.pdf", "status": "Active"},
+            {"id": 503, "title": "doc3.pdf", "status": "Active"},
+        ]
+
+        result = await handle_download_contract_attachment(
+            {"contract_id": 100}, mock_client,
+        )
+        data = _parse(result)
+
+        assert data["success"] is True
+        assert data["data"]["attachment_count"] == 3
+        assert len(data["data"]["attachments"]) == 3
+        # Should NOT have downloaded anything
+        mock_client.retrieve_attachment.assert_not_called()
+        assert any("attachment_id" in s for s in data["next_steps"])
+
+    @pytest.mark.asyncio
+    async def test_direct_attachment_id(self, mock_client):
+        """Providing attachment_id should skip search and download directly."""
+        mock_client.retrieve_attachment.return_value = {
+            "file_path": "/Users/test/Downloads/agiloft/terms.pdf",
+            "file_name": "terms.pdf",
+            "file_size_bytes": 5000,
+            "content_type": "application/pdf",
+        }
+
+        result = await handle_download_contract_attachment(
+            {"contract_id": 100, "attachment_id": 501}, mock_client,
+        )
+        data = _parse(result)
+
+        assert data["success"] is True
+        assert data["data"]["attachment_id"] == 501
+        assert data["data"]["file"]["file_name"] == "terms.pdf"
+        # Should NOT have called search_records
+        mock_client.search_records.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_attachments_found(self, mock_client):
+        """No attachments should return a helpful error."""
+        mock_client.search_records.return_value = []
+        mock_client.get_record.return_value = {
+            "id": 100, "contract_title1": "Test Contract"
+        }
+
+        result = await handle_download_contract_attachment(
+            {"contract_id": 100}, mock_client,
+        )
+        data = _parse(result)
+
+        assert data["success"] is False
+        assert "no attachments" in data["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_sandbox_save_dir_rejected(self, mock_client):
+        """Sandbox save_dir should be rejected."""
+        result = await handle_download_contract_attachment(
+            {"contract_id": 100, "save_dir": "/mnt/user-data/downloads"},
+            mock_client,
+        )
+        data = _parse(result)
+
+        assert data["success"] is False
+        assert "sandbox" in data["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_contract_title(self, mock_client):
+        """Should fallback to contract_title search when contract_id search is empty."""
+        # First search by contract_id returns empty
+        # Then get_record for contract title
+        # Then search by contract_title returns results
+        mock_client.search_records.side_effect = [
+            [],  # contract_id search - empty
+            [{"id": 501, "title": "doc.pdf", "status": "Active", "attached_file": "doc.pdf"}],  # title search
+        ]
+        mock_client.get_record.return_value = {
+            "id": 100, "contract_title1": "Test Contract"
+        }
+        mock_client.retrieve_attachment.return_value = {
+            "file_path": "/Users/test/Downloads/agiloft/doc.pdf",
+            "file_name": "doc.pdf",
+            "file_size_bytes": 1000,
+            "content_type": "application/pdf",
+        }
+
+        result = await handle_download_contract_attachment(
+            {"contract_id": 100}, mock_client,
+        )
+        data = _parse(result)
+
+        assert data["success"] is True
+        assert data["data"]["attachment_id"] == 501
+
+    @pytest.mark.asyncio
+    async def test_api_error(self, mock_client):
+        """API error should return workflow error."""
+        mock_client.search_records.side_effect = Exception("API down")
+
+        result = await handle_download_contract_attachment(
+            {"contract_id": 100}, mock_client,
+        )
+        data = _parse(result)
+
+        assert data["success"] is False
+        assert "API down" in data["error"]

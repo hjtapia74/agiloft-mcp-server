@@ -287,3 +287,22 @@ class TestToolGenerator:
     def test_tool_count(self):
         """Verify total tool count is 84 (12 per entity × 7 entities)."""
         assert len(self.tools) == 84
+
+    def test_contract_attachment_tools_have_warning(self):
+        """Contract attachment tools should have WARNING in their descriptions."""
+        warning_tools = [
+            "agiloft_attach_file_contract",
+            "agiloft_retrieve_attachment_contract",
+            "agiloft_remove_attachment_contract",
+            "agiloft_get_attachment_info_contract",
+        ]
+        for tool_name in warning_tools:
+            tool = next(t for t in self.tools if t.name == tool_name)
+            assert "WARNING" in tool.description, (
+                f"{tool_name} should have WARNING in description"
+            )
+
+    def test_non_contract_attachment_tools_no_warning(self):
+        """Non-contract attachment tools should NOT have WARNING."""
+        tool = next(t for t in self.tools if t.name == "agiloft_attach_file_attachment")
+        assert "WARNING" not in tool.description

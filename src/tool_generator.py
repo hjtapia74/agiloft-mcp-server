@@ -220,12 +220,19 @@ def _gen_upsert_tool(entity: EntityConfig) -> Tuple[Tool, str]:
 
 
 def _gen_attach_file_tool(entity: EntityConfig) -> Tuple[Tool, str]:
+    desc = (
+        f"Upload a file attachment to a {entity.display_name.lower()} record. "
+        f"Requires the record ID, target field name, file name, and base64-encoded file content."
+    )
+    if entity.key == "contract":
+        desc += (
+            " WARNING: Contracts do NOT have file fields — this tool will fail. "
+            "Use agiloft_attach_file_to_contract instead (workflow tool that "
+            "creates an Attachment record linked to the contract)."
+        )
     return Tool(
         name=_tool_name("attach_file", entity),
-        description=(
-            f"Upload a file attachment to a {entity.display_name.lower()} record. "
-            f"Requires the record ID, target field name, file name, and base64-encoded file content."
-        ),
+        description=desc,
         inputSchema={
             "type": "object",
             "properties": {
@@ -253,14 +260,21 @@ def _gen_attach_file_tool(entity: EntityConfig) -> Tuple[Tool, str]:
 
 
 def _gen_retrieve_attach_tool(entity: EntityConfig) -> Tuple[Tool, str]:
+    desc = (
+        f"Download an attachment from a {entity.display_name.lower()} record "
+        f"and save it to local disk. Returns file metadata (path, name, size, "
+        f"content_type) — no binary data in the response. "
+        f"Use get_attachment_info first to find the correct field and file position."
+    )
+    if entity.key == "contract":
+        desc += (
+            " WARNING: Contracts do NOT have file fields — this tool will fail. "
+            "Use agiloft_download_contract_attachment instead (workflow tool that "
+            "finds and downloads from the linked Attachment record)."
+        )
     return Tool(
         name=_tool_name("retrieve_attachment", entity),
-        description=(
-            f"Download an attachment from a {entity.display_name.lower()} record "
-            f"and save it to local disk. Returns file metadata (path, name, size, "
-            f"content_type) — no binary data in the response. "
-            f"Use get_attachment_info first to find the correct field and file position."
-        ),
+        description=desc,
         inputSchema={
             "type": "object",
             "properties": {
@@ -295,12 +309,19 @@ def _gen_retrieve_attach_tool(entity: EntityConfig) -> Tuple[Tool, str]:
 
 
 def _gen_remove_attach_tool(entity: EntityConfig) -> Tuple[Tool, str]:
+    desc = (
+        f"Remove an attachment from a {entity.display_name.lower()} record's file field. "
+        f"Use get_attachment_info first to confirm the file position."
+    )
+    if entity.key == "contract":
+        desc += (
+            " WARNING: Contracts do NOT have file fields — this tool will fail. "
+            "Use agiloft_search_attachments with contract_id='<id>' to find the "
+            "attachment record, then agiloft_remove_attachment_attachment to remove it."
+        )
     return Tool(
         name=_tool_name("remove_attachment", entity),
-        description=(
-            f"Remove an attachment from a {entity.display_name.lower()} record's file field. "
-            f"Use get_attachment_info first to confirm the file position."
-        ),
+        description=desc,
         inputSchema={
             "type": "object",
             "properties": {
@@ -326,13 +347,20 @@ def _gen_remove_attach_tool(entity: EntityConfig) -> Tuple[Tool, str]:
 
 
 def _gen_attach_info_tool(entity: EntityConfig) -> Tuple[Tool, str]:
+    desc = (
+        f"Get metadata about files attached to a {entity.display_name.lower()} record's "
+        f"file field, including file names, sizes, and positions. "
+        f"Use this before retrieve_attachment to find the correct file position."
+    )
+    if entity.key == "contract":
+        desc += (
+            " WARNING: Contracts do NOT have file fields — this tool will fail. "
+            "Use agiloft_search_attachments with contract_id='<id>' to find "
+            "attachment records linked to the contract instead."
+        )
     return Tool(
         name=_tool_name("get_attachment_info", entity),
-        description=(
-            f"Get metadata about files attached to a {entity.display_name.lower()} record's "
-            f"file field, including file names, sizes, and positions. "
-            f"Use this before retrieve_attachment to find the correct file position."
-        ),
+        description=desc,
         inputSchema={
             "type": "object",
             "properties": {

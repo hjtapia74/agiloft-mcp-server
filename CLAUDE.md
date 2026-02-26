@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an Agiloft Model Context Protocol (MCP) server that provides 90 tools and 5 prompts for interacting with Agiloft's REST API. The server uses a generic, table-driven architecture to support 7 entities (Contract, Company, Attachment, Contact, Employee, Customer, Contract Type) with 12 operations each, plus 6 composite workflow tools and 5 MCP prompts for guided business workflows.
+This is an Agiloft Model Context Protocol (MCP) server that provides 91 tools and 5 prompts for interacting with Agiloft's REST API. The server uses a generic, table-driven architecture to support 7 entities (Contract, Company, Attachment, Contact, Employee, Customer, Contract Type) with 12 operations each, plus 7 composite workflow tools and 5 MCP prompts for guided business workflows.
 
 ## Architecture
 
@@ -18,7 +18,7 @@ The codebase follows a table-driven, modular architecture:
 - **`src/agiloft_client.py`**: Generic entity-agnostic API client with backward-compatible contract wrappers. Manages authentication and token refresh.
 
 ### Workflow Layer (Composite Tools + Prompts)
-- **`src/workflow_tools.py`**: Generates 6 composite workflow `Tool` definitions that chain multiple API calls.
+- **`src/workflow_tools.py`**: Generates 7 composite workflow `Tool` definitions that chain multiple API calls.
 - **`src/workflow_handlers.py`**: Handler implementations for workflow tools. Returns enriched responses with `next_steps` guidance and `warnings`.
 - **`src/prompt_registry.py`**: 5 MCP Prompt definitions for guided business workflows (appear in Claude Desktop's slash-command menu).
 
@@ -83,20 +83,21 @@ PYTHONPATH=. python -m pytest tests/test_workflow_tools.py -v
 PYTHONPATH=. python -m pytest tests/test_workflow_handlers.py -v
 ```
 
-## MCP Tools (90 total)
+## MCP Tools (91 total)
 
 ### Entity Tools (84)
 7 entities x 12 operations each:
 - **7 Entities**: Contract, Company, Attachment, Contact, Employee, Customer, Contract Type
 - **12 Operations**: search, get, create, update, delete, upsert, attach_file, retrieve_attachment, remove_attachment, get_attachment_info, action_button, evaluate_format
 
-### Composite Workflow Tools (6)
+### Composite Workflow Tools (7)
 - **`agiloft_preflight_create_contract`**: Validates contract type, company, and field requirements before creation
 - **`agiloft_create_contract_with_company`**: Creates contract with automatic company resolution/creation
 - **`agiloft_get_contract_summary`**: Gets contract + company + attachments + health check in one call
 - **`agiloft_find_expiring_contracts`**: Finds expiring contracts with urgency categories (URGENT/UPCOMING/PLANNING)
 - **`agiloft_onboard_company_with_contact`**: Creates company + optional primary contact in one operation
 - **`agiloft_attach_file_to_contract`**: Uploads a file to a contract via the Attachment entity. Requires a local macOS `file_path` (e.g. `/Users/jane/Downloads/contract.pdf`). Does NOT accept base64 — large payloads hang the MCP stdio pipe. Rejects sandbox paths (`/mnt/`, `/home/claude/`, `/tmp/`).
+- **`agiloft_download_contract_attachment`**: Downloads an attachment from a contract via the Attachment entity. Finds linked Attachment record(s) and downloads the file. If multiple attachments exist, returns a list for the user to choose from. Use this instead of `agiloft_retrieve_attachment_contract` (which always fails because contracts have no file fields).
 
 ### Tool Naming
 - Singular for single-record ops: `agiloft_get_contract`

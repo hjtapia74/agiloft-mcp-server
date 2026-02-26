@@ -186,3 +186,33 @@ class TestPromptArguments:
         prompt = PROMPT_REGISTRY["contract-renewal-check"]["prompt"]
         days_arg = next(a for a in prompt.arguments if a.name == "days_ahead")
         assert days_arg.required is True
+
+
+class TestContractReviewPromptCorrectness:
+    """Verify contract-review prompt uses correct tools."""
+
+    def test_no_broken_attachment_info_reference(self):
+        """contract-review should NOT reference agiloft_get_attachment_info_contract."""
+        result = get_prompt("contract-review", {"contract_id": "42"})
+        text = result.messages[0].content.text
+        assert "agiloft_get_attachment_info_contract" not in text
+
+    def test_no_broken_retrieve_attachment_as_recommendation(self):
+        """contract-review should NOT recommend agiloft_retrieve_attachment_contract as the tool to use."""
+        result = get_prompt("contract-review", {"contract_id": "42"})
+        text = result.messages[0].content.text
+        # It's OK to mention it in a "NOT" warning, but it shouldn't be the recommended tool
+        assert "use agiloft_retrieve_attachment_contract" not in text.lower()
+        assert "agiloft_retrieve_attachment_attachment" not in text
+
+    def test_uses_search_attachments_for_info(self):
+        """contract-review should use agiloft_search_attachments for checking attachments."""
+        result = get_prompt("contract-review", {"contract_id": "42"})
+        text = result.messages[0].content.text
+        assert "agiloft_search_attachments" in text
+
+    def test_uses_download_contract_attachment(self):
+        """contract-review should reference agiloft_download_contract_attachment for downloads."""
+        result = get_prompt("contract-review", {"contract_id": "42"})
+        text = result.messages[0].content.text
+        assert "agiloft_download_contract_attachment" in text

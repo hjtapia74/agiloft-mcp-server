@@ -16,9 +16,9 @@ class TestWorkflowToolGenerator:
         """Generate workflow tools once for all tests."""
         self.tools, self.dispatch = generate_workflow_tools()
 
-    def test_generates_6_tools(self):
-        """Should generate exactly 6 workflow tools."""
-        assert len(self.tools) == 6
+    def test_generates_7_tools(self):
+        """Should generate exactly 7 workflow tools."""
+        assert len(self.tools) == 7
 
     def test_tools_are_tool_objects(self):
         """All generated items should be mcp.types.Tool instances."""
@@ -35,6 +35,7 @@ class TestWorkflowToolGenerator:
             "agiloft_find_expiring_contracts",
             "agiloft_onboard_company_with_contact",
             "agiloft_attach_file_to_contract",
+            "agiloft_download_contract_attachment",
         ]
         for name in expected:
             assert name in tool_names, f"Missing workflow tool: {name}"
@@ -216,3 +217,43 @@ class TestAttachFileToContractSchema:
     def test_description_warns_about_sandbox_paths(self):
         """Description should warn about sandbox paths."""
         assert "sandbox" in self.tool.description.lower()
+
+
+class TestDownloadContractAttachmentSchema:
+    """Test the download_contract_attachment tool schema."""
+
+    def setup_method(self):
+        tools, _ = generate_workflow_tools()
+        self.tool = next(t for t in tools if t.name == "agiloft_download_contract_attachment")
+
+    def test_requires_contract_id(self):
+        """contract_id should be required."""
+        required = self.tool.inputSchema["required"]
+        assert "contract_id" in required
+
+    def test_attachment_id_optional(self):
+        """attachment_id should be optional."""
+        required = self.tool.inputSchema["required"]
+        assert "attachment_id" not in required
+
+    def test_has_attachment_id_property(self):
+        """Should have attachment_id property."""
+        props = self.tool.inputSchema["properties"]
+        assert "attachment_id" in props
+        assert props["attachment_id"]["type"] == "integer"
+
+    def test_has_file_position_property(self):
+        """Should have file_position property with default 0."""
+        props = self.tool.inputSchema["properties"]
+        assert "file_position" in props
+        assert props["file_position"]["default"] == 0
+
+    def test_has_save_dir_property(self):
+        """Should have optional save_dir property."""
+        props = self.tool.inputSchema["properties"]
+        assert "save_dir" in props
+        assert "save_dir" not in self.tool.inputSchema["required"]
+
+    def test_description_warns_against_retrieve_attachment_contract(self):
+        """Description should warn against using agiloft_retrieve_attachment_contract."""
+        assert "agiloft_retrieve_attachment_contract" in self.tool.description
