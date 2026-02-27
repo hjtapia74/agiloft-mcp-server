@@ -306,3 +306,23 @@ class TestToolGenerator:
         """Non-contract attachment tools should NOT have WARNING."""
         tool = next(t for t in self.tools if t.name == "agiloft_attach_file_attachment")
         assert "WARNING" not in tool.description
+
+    def test_create_attachment_has_contract_guidance(self):
+        """agiloft_create_attachment should guide agents to the workflow tool."""
+        tool = next(t for t in self.tools if t.name == "agiloft_create_attachment")
+        assert "agiloft_attach_file_to_contract" in tool.description, (
+            "create_attachment should mention the workflow tool"
+        )
+        assert "contract_title" in tool.description, (
+            "create_attachment should explain linking via contract_title"
+        )
+
+    def test_attach_file_tools_have_base64_caution(self):
+        """All attach_file tools should warn about large base64 payloads."""
+        attach_tools = [t for t in self.tools if t.name.startswith("agiloft_attach_file_")]
+        assert len(attach_tools) == 7, "Should have 7 attach_file tools"
+        for tool in attach_tools:
+            has_warning = "WARNING" in tool.description or "CAUTION" in tool.description
+            assert has_warning, (
+                f"{tool.name} should have WARNING or CAUTION about large payloads"
+            )

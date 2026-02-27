@@ -121,13 +121,24 @@ def _gen_get_tool(entity: EntityConfig) -> Tuple[Tool, str]:
 
 def _gen_create_tool(entity: EntityConfig) -> Tuple[Tool, str]:
     required_desc = ", ".join(entity.required_fields) if entity.required_fields else "none"
+    desc = (
+        f"Create a new {entity.display_name.lower()} in Agiloft. "
+        f"Required fields: {required_desc}. "
+        f"Key fields are shown in the schema; any valid Agiloft field can be included."
+    )
+    if entity.key == "attachment":
+        desc += (
+            " NOTE: To attach files to a CONTRACT, use the "
+            "agiloft_attach_file_to_contract workflow tool instead — it handles "
+            "creating the Attachment record, linking it to the contract, and "
+            "uploading the file in one step. The contract_id field is a linked "
+            "field that cannot be set directly; attachments link to contracts "
+            "via the contract_title field with a colon prefix "
+            "(e.g. ':My Contract Title')."
+        )
     return Tool(
         name=_tool_name("create", entity),
-        description=(
-            f"Create a new {entity.display_name.lower()} in Agiloft. "
-            f"Required fields: {required_desc}. "
-            f"Key fields are shown in the schema; any valid Agiloft field can be included."
-        ),
+        description=desc,
         inputSchema={
             "type": "object",
             "properties": {
@@ -230,6 +241,11 @@ def _gen_attach_file_tool(entity: EntityConfig) -> Tuple[Tool, str]:
             "Use agiloft_attach_file_to_contract instead (workflow tool that "
             "creates an Attachment record linked to the contract)."
         )
+    desc += (
+        " CAUTION: Large base64 payloads (>1 MB) may hang the MCP transport. "
+        "For contract attachments, use agiloft_attach_file_to_contract which "
+        "reads files directly from disk via file_path."
+    )
     return Tool(
         name=_tool_name("attach_file", entity),
         description=desc,
