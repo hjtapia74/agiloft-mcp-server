@@ -70,7 +70,7 @@ black src/ test_script.py
 # Lint code
 flake8 src/ test_script.py
 
-# Run all unit tests (213 tests)
+# Run all unit tests (256 tests)
 PYTHONPATH=. python -m pytest tests/ -v
 
 # Run specific test modules
@@ -120,7 +120,7 @@ Prompts appear in Claude Desktop's slash-command menu and guide multi-step workf
 - **Error Handling**: Custom exception hierarchy (`AgiloftError`, `AgiloftAuthError`, `AgiloftAPIError`, `AgiloftConfigError`) with enhanced error context
 - **Configuration**: Supports both file-based and environment variable configuration with validation
 - **Async Architecture**: Fully async/await based using aiohttp and asyncio
-- **Testing**: 213 unit tests with pytest, including async test support and mocking
+- **Testing**: 256 unit tests with pytest, including async test support and mocking
 - **Workflow Responses**: Composite tools return enriched JSON with `next_steps` arrays and `warnings` for AI guidance
 - **Debug Logging**: Server writes detailed logs to `~/Library/Logs/Claude/agiloft-server-debug.log` (uses `logging.basicConfig(force=True)` to override MCP library defaults)
 - **File Attachments**: Files attach via the Attachment entity, not the contract table directly. The MCP server reads files from local disk — base64 encoding was removed because large payloads hang the MCP stdio transport
