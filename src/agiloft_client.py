@@ -6,6 +6,11 @@ Provides generic entity-agnostic methods for CRUD, search, upsert, and
 attachment operations. Also maintains backward-compatible contract-specific
 wrapper methods.
 
+Supports three authentication methods:
+- Legacy username/password login
+- OAuth2 Client Credentials (machine-to-machine)
+- OAuth2 Authorization Code (browser-based, requires manual initiation)
+
 Automatically manages token refresh for the 15-minute expiration window.
 """
 
@@ -35,16 +40,30 @@ class AgiloftClient:
     def __init__(self, config: Config):
         self.config = config
         self.base_url = config.get('agiloft.base_url')
-        self.username = config.get('agiloft.username')
-        self.password = config.get('agiloft.password')
         self.kb = config.get('agiloft.kb')
         self.language = config.get('agiloft.language', 'en')
+
+        # Authentication method
+        self.auth_method = config.get('agiloft.auth_method', 'legacy')
+
+        # Legacy credentials (only used for legacy auth)
+        self.username = config.get('agiloft.username')
+        self._password = config.get('agiloft.password')
+
+        # OAuth2 credentials
+        self.oauth2_client_id = config.get('agiloft.oauth2.client_id')
+        self._oauth2_client_secret = config.get('agiloft.oauth2.client_secret')
+        self.oauth2_token_endpoint = config.get('agiloft.oauth2.token_endpoint')
+        self.oauth2_authorization_endpoint = config.get('agiloft.oauth2.authorization_endpoint')
+        self.oauth2_redirect_uri = config.get('agiloft.oauth2.redirect_uri', 'http://localhost:8080/callback')
+        self.oauth2_scope = config.get('agiloft.oauth2.scope', '')
 
         # Session management
         self.session: Optional[aiohttp.ClientSession] = None
         self.access_token: Optional[str] = None
         self.refresh_token: Optional[str] = None
         self.token_expires_at: Optional[datetime] = None
+        self.api_access_point: Optional[str] = None
         self._auth_lock = asyncio.Lock()
 
     async def __aenter__(self):
@@ -68,56 +87,245 @@ class AgiloftClient:
             await self.session.close()
 
     async def ensure_authenticated(self):
-        """Ensure we have a valid authentication token."""
+        """Ensure we have a valid authentication token.
+
+        Tries token refresh first (if a refresh token is available),
+        falling back to full authentication on failure.
+        """
         async with self._auth_lock:
             now = datetime.now()
             if (self.access_token is None or
                 self.token_expires_at is None or
                     now >= self.token_expires_at - timedelta(minutes=1)):
+
+                # Try refresh first if available
+                if self.refresh_token:
+                    try:
+                        await self._refresh_access_token()
+                        return
+                    except AgiloftAuthError as e:
+                        logger.warning(f"Token refresh failed, falling back to authentication: {e}")
+                        self.refresh_token = None
+
                 await self._authenticate()
 
     async def _authenticate(self):
-        """Perform authentication with Agiloft API."""
+        """Route to the correct authentication method."""
+        if self.auth_method == "oauth2_client_credentials":
+            await self._authenticate_oauth2_client_credentials()
+        elif self.auth_method == "oauth2_authorization_code":
+            if self.refresh_token:
+                try:
+                    await self._refresh_access_token()
+                    return
+                except AgiloftAuthError:
+                    self.refresh_token = None
+            raise AgiloftAuthError(
+                "OAuth2 Authorization Code flow requires browser-based authentication. "
+                "Call authenticate_with_browser() before using the client."
+            )
+        else:
+            await self._authenticate_legacy()
+
+    async def _authenticate_legacy(self):
+        """Perform legacy username/password authentication with Agiloft API."""
         await self.ensure_session()
+
+        if not self._password:
+            raise AgiloftAuthError("No password configured for legacy authentication")
 
         login_url = f"{self.base_url}/login"
         login_data = {
-            "password": self.password,
+            "password": self._password,
             "KB": self.kb,
             "login": self.username,
             "lang": self.language,
         }
 
-        logger.info("Authenticating with Agiloft...")
+        logger.info("Authenticating with Agiloft (legacy)...")
 
         try:
             async with self.session.post(login_url, json=login_data) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    error_msg = f"Authentication failed: {response.status} - {error_text}"
-                    logger.error(f"{error_msg} (KB: {self.kb})")
-                    raise AgiloftAuthError(error_msg)
+                    raise AgiloftAuthError(
+                        f"Authentication failed: {response.status} - "
+                        f"{self._sanitize_error(error_text)}"
+                    )
 
                 data = await response.json()
 
                 if not data.get('success', False):
-                    error_msg = f"Authentication failed: {data.get('message', 'Unknown error')}"
-                    logger.error(f"{error_msg} (KB: {self.kb})")
-                    raise AgiloftAuthError(error_msg)
+                    raise AgiloftAuthError(
+                        f"Authentication failed: {data.get('message', 'Unknown error')}"
+                    )
 
                 result = data.get('result', {})
                 self.access_token = result.get('access_token')
                 self.refresh_token = result.get('refresh_token')
-                expires_in = result.get('expires_in', 15)
+                expires_in = result.get('expires_in', 900)
 
-                self.token_expires_at = datetime.now() + timedelta(minutes=expires_in)
-                logger.info(f"Authentication successful. Token expires at {self.token_expires_at}")
+                self.token_expires_at = datetime.now() + timedelta(seconds=expires_in)
+                logger.info(f"Legacy authentication successful. Token expires at {self.token_expires_at}")
+
+                # Clear password from memory after successful auth
+                self._password = None
 
         except AgiloftAuthError:
             raise
         except Exception as e:
             logger.error(f"Authentication error: {type(e).__name__}")
+            raise AgiloftAuthError(f"Authentication failed: {type(e).__name__}")
+
+    async def _authenticate_oauth2_client_credentials(self):
+        """Perform OAuth2 client credentials authentication."""
+        await self.ensure_session()
+
+        if not self.oauth2_client_id or not self._oauth2_client_secret:
+            raise AgiloftAuthError(
+                "OAuth2 client_id and client_secret are required for client_credentials flow"
+            )
+        if not self.oauth2_token_endpoint:
+            raise AgiloftAuthError("OAuth2 token_endpoint is required")
+
+        logger.info("Authenticating with Agiloft (OAuth2 client credentials)...")
+
+        token_data = {
+            "grant_type": "client_credentials",
+            "client_id": self.oauth2_client_id,
+            "client_secret": self._oauth2_client_secret,
+            "kb": self.kb
+        }
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json"
+        }
+
+        try:
+            async with self.session.post(
+                self.oauth2_token_endpoint,
+                data=token_data,
+                headers=headers
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise AgiloftAuthError(
+                        f"OAuth2 authentication failed: {response.status} - "
+                        f"{self._sanitize_error(error_text)}"
+                    )
+
+                content_type = response.headers.get('Content-Type', '')
+                if 'application/json' not in content_type:
+                    raise AgiloftAuthError(
+                        f"OAuth2 token endpoint returned unexpected content type: {content_type}"
+                    )
+
+                data = await response.json()
+
+                self.access_token = data.get('access_token')
+                if not self.access_token:
+                    raise AgiloftAuthError("No access_token in OAuth2 response")
+
+                expires_in = data.get('expires_in', 900)
+                self.token_expires_at = datetime.now() + timedelta(seconds=expires_in)
+                self.refresh_token = data.get('refresh_token')
+
+                logger.info(f"OAuth2 authentication successful. Token expires at {self.token_expires_at}")
+
+                # Clear client secret from memory after successful auth
+                self._oauth2_client_secret = None
+
+        except AgiloftAuthError:
             raise
+        except Exception as e:
+            logger.error(f"OAuth2 authentication error: {type(e).__name__}")
+            raise AgiloftAuthError(f"OAuth2 authentication failed: {type(e).__name__}")
+
+    async def _refresh_access_token(self):
+        """Refresh the access token using the stored refresh token.
+
+        Determines the correct token endpoint and sends a refresh_token
+        grant request. Supports token rotation (new refresh token in response).
+        """
+        if not self.refresh_token:
+            raise AgiloftAuthError("No refresh token available")
+
+        await self.ensure_session()
+
+        # Determine token endpoint (configured > api_access_point > derived)
+        if self.oauth2_token_endpoint:
+            token_url = self.oauth2_token_endpoint
+        elif self.api_access_point:
+            token_url = f"{self.api_access_point}/ewws/otoken"
+        else:
+            base_url = self.base_url.split('/ewws/alrest')[0]
+            token_url = f"{base_url}/ewws/otoken"
+
+        logger.info("Refreshing access token...")
+
+        token_data = {
+            'grant_type': 'refresh_token',
+            'refresh_token': self.refresh_token,
+            'client_id': self.oauth2_client_id or '',
+            'redirect_uri': self.oauth2_redirect_uri
+        }
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json"
+        }
+
+        try:
+            async with self.session.post(
+                token_url, data=token_data, headers=headers
+            ) as response:
+                response_text = await response.text()
+
+                if response.status != 200:
+                    raise AgiloftAuthError(
+                        f"Token refresh failed: {response.status} - "
+                        f"{self._sanitize_error(response_text)}"
+                    )
+
+                content_type = response.headers.get('Content-Type', '')
+                if 'application/json' not in content_type:
+                    raise AgiloftAuthError(
+                        f"Token refresh returned unexpected content type: {content_type}"
+                    )
+
+                data = json.loads(response_text)
+
+                new_token = data.get('access_token')
+                if not new_token:
+                    raise AgiloftAuthError("No access_token in refresh response")
+
+                self.access_token = new_token
+                expires_in = data.get('expires_in', 900)
+                self.token_expires_at = datetime.now() + timedelta(seconds=expires_in)
+
+                # Support token rotation
+                new_refresh = data.get('refresh_token')
+                if new_refresh:
+                    self.refresh_token = new_refresh
+
+                logger.info(f"Token refresh successful. Expires at {self.token_expires_at}")
+
+        except AgiloftAuthError:
+            raise
+        except Exception as e:
+            logger.error(f"Token refresh error: {type(e).__name__}")
+            raise AgiloftAuthError(f"Token refresh failed: {type(e).__name__}")
+
+    @staticmethod
+    def _sanitize_error(error_text: str, max_len: int = 200) -> str:
+        """Truncate and sanitize error text to avoid leaking server internals."""
+        if not error_text:
+            return "(empty response)"
+        sanitized = error_text[:max_len]
+        if len(error_text) > max_len:
+            sanitized += "... (truncated)"
+        return sanitized
 
     def _get_auth_headers(self) -> Dict[str, str]:
         """Get authentication headers for API requests."""
@@ -173,7 +381,8 @@ class AgiloftClient:
             if not match:
                 match = re.search(r"filename=([^\s;]+)", cd)
             if match:
-                filename = match.group(1)
+                # Strip path components to prevent directory traversal
+                filename = os.path.basename(match.group(1))
         return filename, content_type
 
     async def _make_binary_request(self, method: str, endpoint: str,
@@ -244,7 +453,8 @@ class AgiloftClient:
                 elif response.status != 200:
                     error_text = await response.text()
                     raise AgiloftAPIError(
-                        f"Binary request failed: {response.status} - {error_text}",
+                        f"Binary request failed: {response.status} - "
+                        f"{self._sanitize_error(error_text)}",
                         status_code=response.status,
                         response_text=error_text,
                     )
@@ -274,7 +484,12 @@ class AgiloftClient:
             raise AgiloftAPIError(error_msg)
 
     async def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Make an authenticated request to the Agiloft API."""
+        """Make an authenticated request to the Agiloft API.
+
+        On 401, uses a lock to prevent concurrent refresh races. If another
+        coroutine already refreshed the token, reuses it. Otherwise tries
+        refresh_token first, falling back to full re-authentication.
+        """
         await self.ensure_authenticated()
         await self.ensure_session()
 
@@ -296,6 +511,9 @@ class AgiloftClient:
                     headers[k] = v
         kwargs['headers'] = headers
 
+        # Snapshot token to detect concurrent refresh
+        token_before_request = self.access_token
+
         logger.debug(f"{method.upper()} {url}")
 
         try:
@@ -303,14 +521,31 @@ class AgiloftClient:
                 response_text = await response.text()
 
                 if response.status == 401:
-                    logger.warning(f"Received 401 for {method} {url}, attempting re-authentication...")
-                    await self._authenticate()
+                    logger.warning(f"Received 401 for {method} {url}, attempting token refresh...")
+                    async with self._auth_lock:
+                        if self.access_token != token_before_request:
+                            # Another coroutine already refreshed
+                            logger.info("Token already refreshed by concurrent request, retrying")
+                        elif self.refresh_token:
+                            try:
+                                await self._refresh_access_token()
+                            except AgiloftAuthError:
+                                logger.warning("Token refresh failed on 401, falling back to _authenticate")
+                                self.refresh_token = None
+                                await self._authenticate()
+                        else:
+                            await self._authenticate()
 
+                    # Retry with new token
                     kwargs['headers'] = self._get_auth_headers()
                     async with self.session.request(method, url, **kwargs) as retry_response:
                         response_text = await retry_response.text()
                         if retry_response.status != 200:
-                            error_msg = f"API request failed after re-auth: {retry_response.status}"
+                            error_msg = (
+                                f"API request failed after re-auth: "
+                                f"{retry_response.status} - "
+                                f"{self._sanitize_error(response_text)}"
+                            )
                             logger.error(f"{error_msg} (URL: {url})")
                             raise AgiloftAPIError(
                                 error_msg,
@@ -320,7 +555,10 @@ class AgiloftClient:
                         return json.loads(response_text)
 
                 elif response.status != 200:
-                    error_msg = f"API request failed: {response.status} - {response_text}"
+                    error_msg = (
+                        f"API request failed: {response.status} - "
+                        f"{self._sanitize_error(response_text)}"
+                    )
                     logger.error(f"API request failed: {response.status} (URL: {url}, Method: {method})")
                     raise AgiloftAPIError(
                         error_msg,
@@ -380,15 +618,7 @@ class AgiloftClient:
     async def search_records(self, entity_path: str, query: str = "",
                              fields: Optional[List[str]] = None,
                              limit: int = 500) -> List[Dict[str, Any]]:
-        """Search records for any entity.
-
-        Args:
-            entity_path: API path for the entity
-            query: Structured query using Agiloft syntax (e.g. 'wfstate=Active',
-                   'company_name~=\\'Iver\\'')
-            fields: Fields to return
-            limit: Maximum number of records to return (default 500)
-        """
+        """Search records for any entity."""
         search_data = {"query": query}
         if fields:
             search_data["field"] = fields
@@ -440,13 +670,7 @@ class AgiloftClient:
 
     async def upsert_record(self, entity_path: str, query: str,
                             data: Dict[str, Any]) -> Dict[str, Any]:
-        """Upsert (insert or update) a record for any entity.
-
-        Args:
-            entity_path: API path for the entity
-            query: Match query in format fieldName~='value'
-            data: Record data to insert/update
-        """
+        """Upsert (insert or update) a record for any entity."""
         response = await self._make_request(
             "POST", f"{entity_path}/upsert",
             params={"query": query},
@@ -466,7 +690,6 @@ class AgiloftClient:
         form_data = aiohttp.FormData()
         form_data.add_field('uploadFile', file_data, filename=file_name)
         params = {"field": field, "fileName": file_name}
-        # Use a longer timeout for file uploads
         upload_timeout = aiohttp.ClientTimeout(total=120)
         # Remove Content-Type to let aiohttp set multipart boundary
         response = await self._make_request(
@@ -482,9 +705,6 @@ class AgiloftClient:
                                   field: str, file_position: int = 0,
                                   save_dir: Optional[str] = None) -> Dict[str, Any]:
         """Retrieve an attachment from a record and save it to local disk.
-
-        The Agiloft retrieveAttach endpoint returns raw binary bytes, not JSON.
-        This method downloads the file and saves it to ``save_dir``.
 
         Args:
             entity_path: API path for the entity
@@ -515,15 +735,25 @@ class AgiloftClient:
             ext = self._guess_extension(content_type)
             filename = f"{field}_{record_id}{ext}"
 
+        # Sanitize filename to prevent path traversal
+        filename = os.path.basename(filename)
+
         os.makedirs(save_dir, exist_ok=True)
+
+        # Resolve save_dir to prevent path traversal via symlinks
+        resolved_save_dir = os.path.realpath(save_dir)
 
         # Handle filename collisions
         base, ext = os.path.splitext(filename)
-        target = os.path.join(save_dir, filename)
+        target = os.path.join(resolved_save_dir, filename)
         counter = 1
         while os.path.exists(target):
-            target = os.path.join(save_dir, f"{base}_{counter}{ext}")
+            target = os.path.join(resolved_save_dir, f"{base}_{counter}{ext}")
             counter += 1
+
+        # Verify final path is still within save_dir
+        if not os.path.realpath(target).startswith(resolved_save_dir):
+            raise AgiloftAPIError("Path traversal detected in attachment filename")
 
         with open(target, "wb") as f:
             f.write(file_bytes)
@@ -621,3 +851,4 @@ class AgiloftClient:
                 self.access_token = None
                 self.refresh_token = None
                 self.token_expires_at = None
+                self.api_access_point = None

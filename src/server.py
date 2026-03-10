@@ -62,9 +62,10 @@ logger.info(f"Logging initialized, writing to {_log_file}")
 # Initialize configuration and client
 config = Config()
 if not config.validate():
+    auth_method = config.get('agiloft.auth_method', 'legacy')
     logger.warning(
-        "Configuration may be incomplete. "
-        "Check required fields: agiloft.base_url, agiloft.username, agiloft.password, agiloft.kb"
+        f"Configuration may be incomplete for '{auth_method}' authentication. "
+        "Check CLAUDE.md for required fields per auth method."
     )
 
 agiloft_client = AgiloftClient(config)
@@ -140,6 +141,7 @@ async def main():
     logging.getLogger().setLevel(log_level)
 
     logger.info("Starting Agiloft MCP Server...")
+    logger.info(f"Auth method: {config.get('agiloft.auth_method', 'legacy')}")
     logger.info(f"Base URL: {config.get('agiloft.base_url')}")
     logger.info(f"Knowledge Base: {config.get('agiloft.kb')}")
     logger.info(f"Registered entity tools: {len(_entity_tools)}")
