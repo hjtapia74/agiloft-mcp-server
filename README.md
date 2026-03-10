@@ -327,9 +327,18 @@ Custom exception classes for structured error handling:
 - Use environment variables for credentials in production
 - Tokens are automatically managed and refreshed
 
+## Disclaimer
+
+This repository is provided "as-is" for educational and integration purposes
+only. It is not an official Agiloft product and is not affiliated with,
+sponsored by, or endorsed by Agiloft, Inc. All interaction with Agiloft
+services is performed exclusively through Agiloft's publicly available REST
+API documentation. "Agiloft" and related trademarks are the property of their
+respective owners. Use of this software is at your own risk.
+
 ## License
 
-[Add your license here]
+This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgments
 
