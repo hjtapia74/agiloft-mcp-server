@@ -1,21 +1,41 @@
 {
   "_comments": {
-    "agiloft.base_url": "Base URL for your Agiloft instance",
-    "agiloft.username": "Username for Agiloft login", 
-    "agiloft.password": "Password for Agiloft login (consider using environment variable AGILOFT_PASSWORD)",
+    "agiloft.base_url": "Base URL for your Agiloft instance (must use HTTPS)",
+    "agiloft.auth_method": "Authentication method: 'legacy', 'oauth2_client_credentials', or 'oauth2_authorization_code'",
+    "agiloft.username": "Username for legacy login",
+    "agiloft.password": "Password for legacy login (prefer AGILOFT_PASSWORD env var)",
     "agiloft.kb": "Knowledge Base name",
     "agiloft.language": "Language code (en, es, fr, etc.)",
+    "agiloft.oauth2.client_id": "OAuth2 Client ID from Agiloft",
+    "agiloft.oauth2.client_secret": "OAuth2 Client Secret (prefer AGILOFT_OAUTH2_CLIENT_SECRET env var)",
+    "agiloft.oauth2.token_endpoint": "OAuth2 token endpoint URL (must use HTTPS)",
+    "agiloft.oauth2.authorization_endpoint": "OAuth2 authorization endpoint (for authorization_code flow only)",
+    "agiloft.oauth2.redirect_uri": "Callback URL for authorization_code flow (default: http://localhost:8080/callback)",
+    "agiloft.oauth2.scope": "Optional OAuth2 scope (e.g. 'permissions_for:213')",
     "server.port": "Port for MCP server (not used in stdio mode)",
     "server.log_level": "Logging level (DEBUG, INFO, WARNING, ERROR)",
-    "server.timeout": "HTTP request timeout in seconds", 
+    "server.timeout": "HTTP request timeout in seconds",
     "server.max_retries": "Maximum number of API request retries"
   },
   "agiloft": {
-    "base_url": "https://agiloft160371.saas.agiloft.com/ewws/alrest/Agiloft Demo70",
-    "username": "admin",
+    "base_url": "https://YOUR_INSTANCE.saas.agiloft.com/ewws/alrest/YOUR_KB",
+    "kb": "YOUR_KB",
+    "language": "en",
+    "auth_method": "legacy",
+
+    "_legacy_auth": "Set auth_method to 'legacy' and provide username/password:",
+    "username": "YOUR_USERNAME",
     "password": "YOUR_PASSWORD_HERE",
-    "kb": "Agiloft Demo70", 
-    "language": "en"
+
+    "_oauth2_auth": "Set auth_method to 'oauth2_client_credentials' and provide oauth2 config:",
+    "oauth2": {
+      "client_id": "YOUR_CLIENT_ID",
+      "client_secret": "YOUR_CLIENT_SECRET",
+      "token_endpoint": "https://YOUR_INSTANCE.saas.agiloft.com/oauth/token",
+      "authorization_endpoint": "",
+      "redirect_uri": "http://localhost:8080/callback",
+      "scope": ""
+    }
   },
   "server": {
     "port": 8000,
